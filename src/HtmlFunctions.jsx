@@ -4,7 +4,7 @@ import { Icon } from "./shared.jsx";
 function NavIcon({ name }) {
   const map = {
     "Visão geral": "grid",
-    Chamados: "ticket",
+    Chamados: "headset",
     Clientes: "users",
     Estoque: "box",
     Custos: "chart",
