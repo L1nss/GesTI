@@ -805,7 +805,7 @@ function Workspace({ store, theme, toggleTheme }) {
   }[page];
 
   return (
-    <div className={`app-shell ${sideOpen ? "shell-expanded" : "shell-collapsed"}`} style={{ "--accent": company.primaryColor || "#2c666e", "--accent-strong": company.primaryColor || "#07393c", "--focus-ring": company.primaryColor || "#2c666e" }}>
+    <div className={`app-shell ${sideOpen ? "shell-expanded" : "shell-collapsed"}`} style={{ "--accent": company.primaryColor || "#2c666e", "--accent-strong": theme === "dark" ? "#90ddf0" : "#07393c", "--focus-ring": company.primaryColor || "#2c666e" }}>
       <SideBar aberta={sideOpen} aoFechar={() => setSideOpen(false)} aoEntrar={enterSidebar} aoSair={leaveSidebar} aoNavegar={navigate} contagens={badgeCounts} onNotificacoes={() => setNotifyOpen((current) => !current)} onLogout={logout} empresaNome={company.name} paginaAtiva={page} paginas={pagesForRole} />
       <AnimatePresence>
         {notifyOpen && (
