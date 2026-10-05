@@ -76,7 +76,7 @@ export function useTheme() {
     } catch {
       // Tema aplicado apenas nesta sessão.
     }
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#191919" : "#f1f1f1");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#0a090c" : "#f0edee");
   }, [theme]);
 
   const toggleTheme = useCallback(() => setTheme((current) => (current === "dark" ? "light" : "dark")), []);

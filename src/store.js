@@ -537,7 +537,7 @@ export function useStore() {
           try { pending = JSON.parse(window.localStorage.getItem(pendingKey) || "null"); } catch { pending = null; }
           if (!pending) return { ok: false, error: "Seu acesso Supabase ainda não está vinculado a uma empresa GesTI." };
           const companyId = await restRpc("bootstrap_company", { p_name: pending.name, p_display_name: pending.adminName });
-          await restUpdate("companies", `id=eq.${companyId}`, { profile_data: pending, branding: { primaryColor: pending.primaryColor || "#6750a4", logoUrl: pending.logoUrl || "" } });
+          await restUpdate("companies", `id=eq.${companyId}`, { profile_data: pending, branding: { primaryColor: pending.primaryColor || "#2c666e", logoUrl: pending.logoUrl || "" } });
           memberships = await restSelect("memberships", `user_id=eq.${user.id}`);
           membership = memberships?.[0];
           window.localStorage.removeItem(pendingKey);
@@ -622,7 +622,7 @@ export function useStore() {
         if (!remote.access_token) return { ok: false, error: "Conta criada. Confirme seu e-mail e entre para concluir a criação do workspace." };
         const user = await supabaseGetUser();
         const orgId = await restRpc("bootstrap_company", { p_name: data.company.name, p_display_name: data.adminName });
-        await restUpdate("companies", `id=eq.${orgId}`, { profile_data: data.company, branding: { primaryColor: data.company.primaryColor || "#6750a4", logoUrl: data.company.logoUrl || "" } });
+        await restUpdate("companies", `id=eq.${orgId}`, { profile_data: data.company, branding: { primaryColor: data.company.primaryColor || "#2c666e", logoUrl: data.company.logoUrl || "" } });
         const passwordHash = await hashPassword(data.password);
         const newOrg = {
           id: orgId, company: { ...data.company }, admin: { name: data.adminName, email: data.adminEmail, passwordHash, role: data.adminRole || "Dono da empresa" },

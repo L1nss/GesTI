@@ -761,7 +761,7 @@ function Workspace({ store, theme, toggleTheme }) {
     event.preventDefault();
     if (!can("manageCompany")) return;
     const form = new FormData(event.currentTarget);
-    const primaryColor = String(form.get("primaryColor") || "#1b3b6f");
+    const primaryColor = String(form.get("primaryColor") || "#2c666e");
     const logoUrl = String(form.get("logoUrl") || "").trim();
     if (!/^#[0-9a-f]{6}$/i.test(primaryColor)) return notify({ tone: "info", title: "Cor inválida", message: "Escolha uma cor hexadecimal válida." });
     if (logoUrl && !/^https:\/\//i.test(logoUrl)) return notify({ tone: "info", title: "URL de logo inválida", message: "Use um endereço HTTPS para a imagem." });
@@ -805,7 +805,7 @@ function Workspace({ store, theme, toggleTheme }) {
   }[page];
 
   return (
-    <div className={`app-shell ${sideOpen ? "shell-expanded" : "shell-collapsed"}`} style={{ "--accent": company.primaryColor || "#1b3b6f", "--accent-strong": company.primaryColor || "#21295c", "--focus-ring": company.primaryColor || "#065a82" }}>
+    <div className={`app-shell ${sideOpen ? "shell-expanded" : "shell-collapsed"}`} style={{ "--accent": company.primaryColor || "#2c666e", "--accent-strong": company.primaryColor || "#07393c", "--focus-ring": company.primaryColor || "#2c666e" }}>
       <SideBar aberta={sideOpen} aoFechar={() => setSideOpen(false)} aoEntrar={enterSidebar} aoSair={leaveSidebar} aoNavegar={navigate} contagens={badgeCounts} onNotificacoes={() => setNotifyOpen((current) => !current)} onLogout={logout} empresaNome={company.name} paginaAtiva={page} paginas={pagesForRole} />
       <AnimatePresence>
         {notifyOpen && (

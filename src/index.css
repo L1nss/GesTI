@@ -2,8 +2,8 @@
 
 :root {
   font-family: Inter, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
-  color: var(--ink, #1a2340);
-  background: var(--paper, #f4f6fb);
+  color: var(--ink, #0A090C);
+  background: var(--paper, #F0EDEE);
   color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -17,19 +17,19 @@
 
 * { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; background: var(--paper, #f4f6fb); }
+html { scroll-behavior: smooth; background: var(--paper, #F0EDEE); }
 
 body { min-width: 320px; min-height: 100vh; margin: 0; }
 
-::selection { background: rgba(6, 90, 130, 0.2); color: var(--ink, #1a2340); }
-:root[data-theme="dark"] ::selection { background: rgba(78, 163, 199, 0.3); }
+::selection { background: rgba(144, 221, 240, 0.45); color: var(--ink, #0A090C); }
+:root[data-theme="dark"] ::selection { background: rgba(144, 221, 240, 0.3); }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, #c3cde4); border: 3px solid var(--paper, #f4f6fb); border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover, #a7b4d4); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, #C5BFC1); border: 3px solid var(--paper, #F0EDEE); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover, #8CA6A8); }
 
 button, input, select, textarea { font: inherit; }
 button, select { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: 0.45; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus-ring, #065A82); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus-ring, #2C666E); outline-offset: 2px; }
