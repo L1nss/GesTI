@@ -1,11 +1,29 @@
+# Local environment and credentials
 .env
 .env.*
 !.env.example
-.vercel
+*.local
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Dependencies and generated build output
+node_modules/
+dist/
+dist-ssr/
+coverage/
+*.tsbuildinfo
+.vite/
+.cache/
+.turbo/
+
+# Deployment and local backend state
+.vercel/
 supabase/.temp/
 
-# Logs
-logs
+# Logs and package-manager debug output
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -13,19 +31,13 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
+# Editor and operating-system files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-.vercel
