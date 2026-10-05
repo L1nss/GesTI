@@ -54,7 +54,7 @@ export function useSavedState(key, initialValue) {
 
 /* --------------------------------- tema --------------------------------- */
 
-const THEME_KEY = "tigest-theme";
+const THEME_KEY = "tigest-theme-v2";
 
 function getInitialTheme() {
   try {
