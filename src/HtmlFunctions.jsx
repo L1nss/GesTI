@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "./shared.jsx";
 
 function NavIcon({ name }) {
@@ -21,6 +21,12 @@ function NavIcon({ name }) {
    própria sidebar) abre; retirar o mouse fecha. No mobile o comportamento
    continua por toque, com backdrop e botão de menu no topo. */
 export function SideBar({ aberta, aoFechar, aoEntrar, aoSair, paginaAtiva, aoNavegar, paginas, contagens, onNotificacoes, onLogout, empresaNome }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const primaryPages = paginas.filter((page) => ["Visão geral", "Chamados", "Estoque", "Custos"].includes(page));
+  const secondaryPages = paginas.filter((page) => !primaryPages.includes(page));
+  const secondaryActive = secondaryPages.includes(paginaAtiva);
+  const showMore = moreOpen || secondaryActive;
+
   useEffect(() => {
     if (!aberta) return undefined;
     const handleKey = (event) => {
@@ -47,7 +53,7 @@ export function SideBar({ aberta, aoFechar, aoEntrar, aoSair, paginaAtiva, aoNav
         <div className="sidebar-label">ESPAÇO DE TRABALHO</div>
         <nav aria-label="Navegação principal">
           <ul className="sidebar-nav">
-            {paginas.map((page) => (
+            {primaryPages.map((page) => (
               <li key={page}>
                 <button
                   aria-current={paginaAtiva === page ? "page" : undefined}
@@ -62,6 +68,17 @@ export function SideBar({ aberta, aoFechar, aoEntrar, aoSair, paginaAtiva, aoNav
                 </button>
               </li>
             ))}
+            {secondaryPages.length > 0 && <li>
+              <button aria-controls="nav-mais" aria-expanded={showMore} className={`nav-item nav-more-toggle ${secondaryActive ? "nav-more-active" : ""}`} onClick={() => setMoreOpen((open) => !open)} title="Mais" type="button">
+                <Icon className="nav-icon" name="list" size={18} />
+                <span className="nav-text">Mais</span>
+                {secondaryPages.reduce((count, page) => count + (contagens[page] || 0), 0) > 0 && <span className="nav-badge">{secondaryPages.reduce((count, page) => count + (contagens[page] || 0), 0)}</span>}
+                <Icon className={`nav-more-chevron ${showMore ? "nav-more-chevron-open" : ""}`} name="chevron" size={14} />
+              </button>
+              {showMore && <ul className="sidebar-nav nav-sublist" id="nav-mais">
+                {secondaryPages.map((page) => <li key={page}><button aria-current={paginaAtiva === page ? "page" : undefined} className={`nav-item ${paginaAtiva === page ? "nav-item-active" : ""}`} onClick={() => { setMoreOpen(false); aoNavegar(page); }} title={page} type="button"><NavIcon name={page} /><span className="nav-text">{page}</span>{contagens[page] > 0 && <span className="nav-badge">{contagens[page]}</span>}</button></li>)}
+              </ul>}
+            </li>}
           </ul>
         </nav>
 

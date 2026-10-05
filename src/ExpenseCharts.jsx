@@ -3,7 +3,7 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieCh
 import { CountUp, EmptyState, Icon, Reveal } from "./shared.jsx";
 import { money, shortDate } from "./utils.js";
 
-const CATEGORY_COLORS = ["#4C6FE7", "#0AA6A6", "#F2A93B", "#9B7BF3", "#E36397", "#63B3A4"];
+const CATEGORY_COLORS = ["#262626", "#fca311", "#737373", "#000000", "#a0a0a0", "#505050"];
 const AXIS_COLOR = "var(--chart-axis)";
 const GRID_COLOR = "var(--chart-grid)";
 

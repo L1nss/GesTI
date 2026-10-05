@@ -545,7 +545,8 @@ function Workspace({ store, theme, toggleTheme }) {
       if (!window.confirm(`Restaurar o backup de ${imported.company?.name || "esta empresa"}? Os dados atuais serão substituídos. Uma cópia de segurança atual será baixada primeiro.`)) return;
       exportBackup();
       setData(imported);
-      writeLogs([...readLogs().filter((entry) => entry.orgId !== org.id), ...(Array.isArray(payload.logs) ? payload.logs : [])]);
+      const importedLogs = Array.isArray(payload.logs) ? payload.logs.filter((entry) => entry && typeof entry === "object" && entry.orgId === org.id) : [];
+      writeLogs([...readLogs().filter((entry) => entry.orgId !== org.id), ...importedLogs]);
       logEvent(org.id, currentPerson.name, "Backup restaurado", `Arquivo ${file.name}`, "warning");
       notify({ tone: "success", title: "Backup restaurado", message: "Dados restaurados. A página será atualizada." });
       window.setTimeout(() => window.location.reload(), 900);
@@ -849,7 +850,7 @@ function Workspace({ store, theme, toggleTheme }) {
               </div></Reveal>
 
               {page === "Visão geral" && <Suspense fallback={<LoadingPanel />}><LazyOverview approvedTotal={approvedTotal} backupBusy={backupBusy} canBackup={can("backup")} canSeeFinances={can("viewCosts")} company={company} inventory={role === "Funcionário" ? [] : inventory} invoices={role === "Funcionário" ? [] : invoices} lowStock={lowStock} now={now} onBackupExport={exportBackup} onBackupImport={importBackup} onNavigate={navigate} overdueTickets={overdueTickets} pendingExpenses={pendingExpenses} pendingTickets={pendingTickets} personName={currentPerson.name} role={role} tickets={visibleTickets} /></Suspense>}
-              {page === "Visão geral" && role !== "Funcionário" && <Suspense fallback={<LoadingPanel />}><LazyTeamMetrics tickets={visibleTickets} /></Suspense>}
+              {page === "Visão geral" && role !== "Funcionário" && <details className="overview-team"><summary>Desempenho da equipe e cumprimento de prazos</summary><Suspense fallback={<LoadingPanel />}><LazyTeamMetrics tickets={visibleTickets} /></Suspense></details>}
               {page === "Chamados" && <Suspense fallback={<LoadingPanel />}><LazyTicketsPage canClaim={can("claimTickets")} canManage={can("manageTickets")} canManageReplies={can("manageTickets")} canManageServices={can("manageServices")} canSetCategory={can("claimTickets")} canSetPriority={can("claimTickets")} currentPersonName={currentPerson.name} detail={ticketDetail} invoices={invoices} now={now} onAddComment={addTicketComment} onAddService={() => setModal("service")} onChangePriority={changeTicketPriority} onChangeStatus={changeTicketStatus} onClaim={claimTicket} onDeclineAssignment={declineAssignment} onDeleteReply={deleteReplyTemplate} onLinkService={linkServiceToTicket} onRemoveService={removeService} onSaveReply={saveReplyTemplate} onSurvey={submitSatisfaction} onToggleService={toggleService} onUnlinkService={unlinkServiceFromTicket} query={query} replyTemplates={org.replyTemplates || []} role={role} services={filteredServices} setDetail={setTicketDetail} setQuery={setQuery} tickets={filteredTickets} /></Suspense>}
               {page === "Chamados" && role !== "Funcionário" && <Suspense fallback={<LoadingPanel />}><LazyTeamMetrics tickets={visibleTickets} /></Suspense>}
               {page === "Clientes" && <Suspense fallback={<LoadingPanel />}><LazyCustomersPage canManage={can("manageClients")} clients={clients} onAdd={() => { setClientEditing(null); setModal("client"); }} onEdit={(client) => { setClientEditing(client); setModal("client"); }} onOpenTickets={(name) => { setQuery(name); navigate("Chamados"); }} onToggle={toggleClient} query={query} setQuery={setQuery} /></Suspense>}

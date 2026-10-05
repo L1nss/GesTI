@@ -207,17 +207,9 @@ export function TeamMetrics({ tickets }) {
 }
 
 /* Visão geral: herói, indicadores e painéis resumo. */
-export function Overview({ now, tickets, invoices, inventory, lowStock, pendingTickets, overdueTickets, pendingExpenses, approvedTotal, onNavigate, company, personName, role, canSeeFinances, canBackup, onBackupExport, onBackupImport, backupBusy }) {
+export function Overview({ tickets, overdueTickets, lowStock = [], pendingExpenses = [], onNavigate, company, personName, role, canSeeFinances, canBackup, onBackupExport, onBackupImport, backupBusy }) {
   const openTickets = tickets.filter((ticket) => ticket.status === "Aberto").length;
   const processingTickets = tickets.filter((ticket) => ticket.status === "Em processamento").length;
-  const attention = tickets.filter((ticket) => ticket.priority === "Urgente" && ticket.status !== "Resolvido").length;
-  const totalItems = inventory.length;
-  const since = now.getTime() - 30 * 86400000;
-  const tickets30d = tickets.filter((ticket) => new Date(ticket.createdAt).getTime() >= since);
-  const resolved30d = tickets30d.filter((ticket) => ticket.status === "Resolvido").length;
-  const resolutionRate = tickets30d.length ? Math.round((resolved30d / tickets30d.length) * 100) : 0;
-  const issued30d = invoices.filter((invoice) => invoice.status === "Emitida" && new Date(invoice.createdAt).getTime() >= since);
-  const billed30d = issued30d.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
   const recentTickets = [...tickets].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 4);
 
   return (
@@ -227,40 +219,29 @@ export function Overview({ now, tickets, invoices, inventory, lowStock, pendingT
         <div className="hero-inner">
           <div className="hero-copy">
             <span className="hero-chip"><span className="live-dot" /> {company.name.toUpperCase()} · SISTEMA OPERACIONAL</span>
-            <h2>Olá, {personName.split(" ")[0]}. Um suporte que mantém <em>o trabalho em movimento</em>.</h2>
-            <p>{role === "Funcionário" ? "Abra uma solicitação e acompanhe aqui as atualizações da equipe de TI." : "Chamados com prioridade automática, prazos claros, estoque enxuto e indicadores calculados sobre os registros da empresa."}</p>
+            <h2>Olá, {personName.split(" ")[0]}.</h2>
+            <p>{role === "Funcionário" ? "Acompanhe seus chamados ou abra uma nova solicitação." : "Acompanhe os chamados recentes e acesse as áreas principais."}</p>
             <div className="hero-actions">
               <button className="hero-cta" onClick={() => onNavigate("Chamados")} type="button"><span aria-hidden="true" className="cta-ripples"><span /><span /><span /></span>Abrir central de chamados <Icon name="arrow" size={17} /></button>
-              {canSeeFinances && <button className="hero-ghost" onClick={() => onNavigate("Custos")} type="button">Ver métricas de gastos</button>}
             </div>
-          </div>
-          <div aria-hidden="true" className="hero-visual">
-            <span className="hero-ring" />
-            <span className="hero-orb-core"><Icon name="cpu" size={30} /></span>
-            <div className="hero-card float-slow"><span className="hero-card-icon"><Icon name="ticket" size={17} /></span><span className="hero-card-copy"><strong>{overdueTickets.length ? `${overdueTickets.length} fora do prazo` : "Prazos acompanhados"}</strong><small>{openTickets} aguardando · {processingTickets} em atendimento</small></span></div>
-            <div className="hero-card float-fast"><span className="hero-card-icon"><Icon name="chart" size={17} /></span><span className="hero-card-copy"><strong>{resolutionRate}% concluídos</strong><small>chamados abertos nos últimos 30 dias</small></span></div>
           </div>
         </div>
       </section></Reveal>
       <section aria-label="Indicadores principais" className="metric-grid">
-        <button className="metric-card" onClick={() => onNavigate("Chamados")} type="button"><span className="metric-icon metric-violet"><Icon name="ticket" size={19} /></span><span className="metric-label">Aguardando atendimento</span><strong className="metric-value"><CountUp value={openTickets} /></strong><span className="metric-note">{processingTickets} em processamento · {pendingTickets.length} ativos</span><span className="metric-arrow"><Icon name="arrow" size={15} /></span></button>
+        <button className="metric-card" onClick={() => onNavigate("Chamados")} type="button"><span className="metric-icon metric-violet"><Icon name="ticket" size={19} /></span><span className="metric-label">Aguardando atendimento</span><strong className="metric-value"><CountUp value={openTickets} /></strong><span className="metric-note">Chamados em aberto</span><span className="metric-arrow"><Icon name="arrow" size={15} /></span></button>
         <button className="metric-card" onClick={() => onNavigate("Chamados")} type="button"><span className="metric-icon metric-amber"><Icon name="clock" size={19} /></span><span className="metric-label">Chamados fora do prazo</span><strong className="metric-value"><CountUp value={overdueTickets.length} /></strong><span className="metric-note">Além do prazo definido pela prioridade</span><span className="metric-arrow"><Icon name="arrow" size={15} /></span></button>
-        {role !== "Funcionário" && <><button className="metric-card" onClick={() => onNavigate("Estoque")} type="button"><span className="metric-icon metric-blue"><Icon name="box" size={19} /></span><span className="metric-label">Componentes cadastrados</span><strong className="metric-value"><CountUp value={totalItems} /></strong><span className="metric-note">{inventory.reduce((sum, item) => sum + Number(item.quantity || 0), 0)} unidades em estoque</span><span className="metric-arrow"><Icon name="arrow" size={15} /></span></button>
-        <button className="metric-card" onClick={() => onNavigate("Estoque")} type="button"><span className="metric-icon metric-amber"><Icon name="warning" size={19} /></span><span className="metric-label">Itens no mínimo</span><strong className="metric-value"><CountUp value={lowStock.length} /></strong><span className="metric-note">{lowStock.length ? "Revisar necessidade de reposição" : "Todos acima do mínimo cadastrado"}</span><span className="metric-arrow"><Icon name="arrow" size={15} /></span></button></>}
-        {canSeeFinances && <button className="metric-card" onClick={() => onNavigate("Custos")} type="button"><span className="metric-icon metric-green"><Icon name="receipt" size={19} /></span><span className="metric-label">Despesas aguardando</span><strong className="metric-value"><CountUp value={pendingExpenses.length} /></strong><span className="metric-note">{money(approvedTotal)} já aprovadas</span><span className="metric-arrow"><Icon name="arrow" size={15} /></span></button>}
-        <button className="metric-card" onClick={() => onNavigate("Chamados")} type="button"><span className="metric-icon metric-violet"><Icon name="chart" size={19} /></span><span className="metric-label">Conclusão em 30 dias</span><strong className="metric-value"><CountUp format={(value) => `${Math.round(value)}%`} value={resolutionRate} /></strong><span className="metric-note">{resolved30d} de {tickets30d.length} chamados abertos no período</span><span className="metric-arrow"><Icon name="arrow" size={15} /></span></button>
-        {role !== "Funcionário" && <button className="metric-card" onClick={() => onNavigate("Notas fiscais")} type="button"><span className="metric-icon metric-blue"><Icon name="file" size={19} /></span><span className="metric-label">Faturado em 30 dias</span><strong className="metric-value"><CountUp format={money} value={billed30d} /></strong><span className="metric-note">{issued30d.length} notas emitidas</span><span className="metric-arrow"><Icon name="arrow" size={15} /></span></button>}
+        <button className="metric-card" onClick={() => onNavigate("Chamados")} type="button"><span className="metric-icon metric-green"><Icon name="check" size={19} /></span><span className="metric-label">Em atendimento</span><strong className="metric-value"><CountUp value={processingTickets} /></strong><span className="metric-note">Chamados em andamento</span><span className="metric-arrow"><Icon name="arrow" size={15} /></span></button>
       </section>
-      {canBackup && <Reveal><section className="panel backup-panel"><div><strong>Proteção dos dados</strong><p>Baixe uma cópia desta empresa ou restaure um backup feito no GesTI.</p></div><div className="backup-actions"><button className="button button-secondary" onClick={onBackupExport} type="button"><Icon name="download" size={15} /> Baixar backup</button><label className="button button-secondary">{backupBusy ? "Restaurando…" : "Restaurar backup"}<input accept="application/json,.json" disabled={backupBusy} hidden onChange={onBackupImport} type="file" /></label></div></section></Reveal>}
       <Reveal delay={0.11}><div className="dashboard-grid">
         <section className="panel"><div className="panel-heading"><div><h2>Chamados recentes</h2><p>Solicitações que passaram pela equipe</p></div><button className="subtle-link" onClick={() => onNavigate("Chamados")} type="button">Ver todos <Icon name="chevron" size={15} /></button></div>
           {recentTickets.length ? <div className="table-scroll"><table><thead><tr><th>Solicitação</th><th>Solicitante</th><th>Prioridade</th><th>Status</th></tr></thead><tbody>{recentTickets.map((ticket) => <tr key={ticket.id}><td><span className="cell-title">{ticket.title}</span><span className="cell-subtitle">{ticket.id}</span></td><td>{ticket.requester}</td><td><Badge tone={priorityTone(ticket.priority)}>{ticket.priority}</Badge></td><td><Badge tone={ticket.status === "Resolvido" ? "green" : ticket.status === "Em processamento" ? "blue" : "neutral"}>{ticket.status}</Badge></td></tr>)}</tbody></table></div> : <EmptyState note="Os novos chamados aparecerão aqui." title="Sem chamados" />}
         </section>
-        {role !== "Funcionário" && <div className="side-stack"><section className="panel stock-panel"><div className="panel-heading"><div><h2>Repor em breve</h2><p>Itens no nível mínimo ou abaixo</p></div><span className="panel-icon amber-icon"><Icon name="warning" /></span></div>{lowStock.length ? <ul className="stock-list">{lowStock.slice(0, 4).map((item) => <li key={item.id}><span className="stock-bullet" /><span className="stock-info"><strong>{item.name}</strong><small>{item.category} · mínimo {item.minimum} un.</small></span><Badge tone="amber">{item.quantity} un.</Badge></li>)}</ul> : <p className="quiet-note">Nenhum item precisa de reposição no momento.</p>}<button className="subtle-link stock-action" onClick={() => onNavigate("Estoque")} type="button">Abrir estoque <Icon name="arrow" size={15} /></button></section>
-          {canSeeFinances && <section className="panel approval-panel"><span className="approval-icon"><Icon name="clock" size={19} /></span><div><strong>{attention ? `${attention} chamado urgente` : "Fluxo de aprovação"}</strong><p>{pendingExpenses.length ? `${pendingExpenses.length} despesa(s) aguardando análise.` : "Nenhuma despesa aguardando aprovação."}</p></div><button aria-label="Abrir custos" className="round-arrow" onClick={() => onNavigate("Custos")} type="button"><Icon name="arrow" size={16} /></button></section>}
+        {(role !== "Funcionário" || canSeeFinances) && <div className="side-stack">
+          {role !== "Funcionário" && <section className="panel stock-panel"><div className="panel-heading"><div><h2>Estoque</h2><p>{lowStock.length ? `${lowStock.length} ${lowStock.length === 1 ? "item precisa" : "itens precisam"} de reposição` : "Nenhum item abaixo do mínimo"}</p></div><span className="panel-icon amber-icon"><Icon name="box" /></span></div>{lowStock.length > 0 && <ul className="stock-list">{lowStock.slice(0, 3).map((item) => <li key={item.id}><span className="stock-bullet" /><span className="stock-info"><strong>{item.name}</strong><small>{item.category} · mínimo {item.minimum} un.</small></span><Badge tone="amber">{item.quantity} un.</Badge></li>)}</ul>}<button className="subtle-link stock-action" onClick={() => onNavigate("Estoque")} type="button">Ver estoque <Icon name="arrow" size={15} /></button></section>}
+          {canSeeFinances && <button className="panel overview-finance" onClick={() => onNavigate("Custos")} type="button"><span className="metric-icon metric-green"><Icon name="receipt" size={19} /></span><span><strong>{pendingExpenses.length}</strong><small>despesas aguardando análise</small></span><Icon name="arrow" size={16} /></button>}
         </div>}
       </div></Reveal>
-      <Reveal delay={0.05}><p className="data-note">Workspace isolado de {company.name}. Convide a equipe na aba Empresa e controle os gastos em Custos.</p></Reveal>
+      {canBackup && <details className="overview-backup"><summary>Backup e restauração</summary><section className="panel backup-panel"><div><strong>Proteção dos dados</strong><p>Baixe uma cópia desta empresa ou restaure um backup feito no GesTI.</p></div><div className="backup-actions"><button className="button button-secondary" onClick={onBackupExport} type="button"><Icon name="download" size={15} /> Baixar backup</button><label className="button button-secondary">{backupBusy ? "Restaurando…" : "Restaurar backup"}<input accept="application/json,.json" disabled={backupBusy} hidden onChange={onBackupImport} type="file" /></label></div></section></details>}
     </>
   );
 }
