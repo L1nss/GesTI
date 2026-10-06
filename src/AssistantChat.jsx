@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { askWorkspaceAssistant } from "./supabaseApi.js";
 import GuestMascot from "./GuestMascot.jsx";
 import { Icon } from "./shared.jsx";
@@ -11,11 +11,29 @@ const quickQuestions = [
 
 export default function AssistantChat({ companyId, enabled, personName }) {
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const closeTimer = useRef(null);
   const [messages, setMessages] = useState(() => [{ role: "assistant", content: `Olá, ${personName.split(" ")[0]}! Sou o Guest, seu ajudante no GesTI. Posso ajudar com as tarefas e informações da sua empresa que seu perfil permite consultar.` }]);
   const canSend = enabled && draft.trim().length > 0 && !busy;
   const visibleMessages = useMemo(() => messages.slice(-12), [messages]);
+
+  useEffect(() => () => window.clearTimeout(closeTimer.current), []);
+
+  const closeGuest = () => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setOpen(false);
+      setClosing(false);
+      return;
+    }
+    setClosing(true);
+    closeTimer.current = window.setTimeout(() => {
+      setOpen(false);
+      setClosing(false);
+      closeTimer.current = null;
+    }, 950);
+  };
 
   const send = async (value = draft) => {
     const content = String(value || "").trim().slice(0, 1500);
@@ -40,9 +58,9 @@ export default function AssistantChat({ companyId, enabled, personName }) {
   };
 
   return (
-    <div className="assistant-dock">
-      {open && <section aria-label="Guest, ajuda do GesTI" aria-modal="false" className="assistant-panel" role="dialog">
-        <header className="assistant-header"><span className="assistant-mark"><GuestMascot className="assistant-guest-icon" /></span><div><strong>Guest</strong><small>Ajuda do GesTI · {enabled ? "dados da sua empresa" : "sessão local"}</small></div><button aria-label="Fechar Guest" className="assistant-close" onClick={() => setOpen(false)} type="button"><Icon name="close" size={18} /></button></header>
+    <div className={`assistant-dock${open && !closing ? " assistant-dock-printing" : closing ? " assistant-dock-closing" : ""}`}>
+      {open && <section aria-label="Guest, ajuda do GesTI" aria-modal="false" className={`assistant-panel${closing ? " assistant-panel-closing" : ""}`} role="dialog">
+        <header className="assistant-header"><span className="assistant-mark"><GuestMascot className="assistant-guest-icon" /></span><div><strong>Guest</strong><small>Ajuda do GesTI · {enabled ? "dados da sua empresa" : "sessão local"}</small></div><button aria-label="Fechar Guest" className="assistant-close" disabled={closing} onClick={closeGuest} type="button"><Icon name="close" size={18} /></button></header>
         <div aria-live="polite" className="assistant-messages">
           {visibleMessages.map((message, index) => <div className={`assistant-message ${message.role === "user" ? "from-user" : "from-assistant"}`} key={`${index}-${message.role}`}><span>{message.content}</span></div>)}
           {busy && <div className="assistant-message from-assistant"><span className="assistant-thinking"><i /> <i /> <i /></span></div>}
@@ -51,7 +69,7 @@ export default function AssistantChat({ companyId, enabled, personName }) {
         <form className="assistant-composer" onSubmit={(event) => { event.preventDefault(); void send(); }}><textarea aria-label="Mensagem para o Guest" maxLength={1500} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder="Pergunte sobre o GesTI..." rows={2} value={draft} /><button aria-label="Enviar mensagem" disabled={!canSend} type="submit"><Icon name={busy ? "spinner" : "arrow"} size={17} /></button></form>
         <p className="assistant-privacy">Usa somente o GesTI e os dados permitidos pelo seu perfil. Perguntas e contexto autorizado são enviados ao Gemini para gerar respostas.</p>
       </section>}
-      <button aria-expanded={open} aria-label={open ? "Fechar conversa com Guest" : "Abrir conversa com Guest"} className="assistant-launcher" onClick={() => setOpen((current) => !current)} title={open ? "Fechar conversa" : "Conversar com Guest"} type="button"><GuestMascot className="assistant-launcher-guest" mode={open ? "eject" : "idle"} /></button>
+      <button aria-expanded={open} aria-label={open ? "Fechar conversa com Guest" : "Abrir conversa com Guest"} className="assistant-launcher" disabled={closing} onClick={() => { if (open) closeGuest(); else { setClosing(false); setOpen(true); } }} title={open ? "Fechar conversa" : "Conversar com Guest"} type="button"><GuestMascot className="assistant-launcher-guest" mode={closing ? "retract" : open ? "eject" : "idle"} /></button>
     </div>
   );
 }

@@ -906,15 +906,24 @@ tbody tr:hover { background: var(--hover-tint); }
 .assistant-header { display: flex; align-items: center; gap: 10px; min-height: 66px; padding: 12px 15px; border-bottom: 1px solid var(--line-soft); background: var(--card-warm); }
 .assistant-mark { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 12px; background: color-mix(in srgb, var(--accent) 12%, var(--card)); color: var(--accent); }
 .assistant-guest-icon { width: 30px; height: 30px; }
-.assistant-launcher-guest { width: 27px; height: 27px; }
+.assistant-launcher-guest { width: 27px; height: 27px; --guest-sheet-scale: 10.3; }
 .assistant-launcher:hover .assistant-launcher-guest:not(.guest-mascot--eject),
 .assistant-launcher:focus-visible .assistant-launcher-guest:not(.guest-mascot--eject) { animation: guest-happy-jump .62s cubic-bezier(.2,.8,.2,1) both; }
-.assistant-launcher-guest.guest-mascot--eject { animation: guest-launch-print .76s cubic-bezier(.18,.78,.26,1.12) both; }
-@keyframes guest-launch-print {
-  0% { transform: translateY(0) scale(1); }
-  32% { transform: translateY(-14px) scale(1.08); }
-  72% { transform: translateY(3px) scale(.96); }
-  100% { transform: translateY(0) scale(1); }
+@keyframes guest-grow-to-sheet {
+  0% { transform: scale(1); }
+  18% { transform: scale(var(--guest-sheet-scale)); }
+  78% { transform: scale(var(--guest-sheet-scale)); }
+  100% { transform: scale(1); }
+}
+@keyframes guest-expand-retract {
+  0% { transform: scale(1); }
+  28%, 62% { transform: scale(var(--guest-sheet-scale)); }
+  100% { transform: scale(1); }
+}
+@keyframes guest-paper-retract {
+  0% { opacity: 1; transform: translateY(-18px) scaleY(1); }
+  68% { opacity: 1; transform: translateY(0) scaleY(.14); }
+  100% { opacity: 0; transform: translateY(1px) scaleY(.04); }
 }
 @keyframes guest-modal-launch {
   0% { opacity: 0; clip-path: inset(100% 0 0); transform: translateY(52px); }
@@ -923,6 +932,11 @@ tbody tr:hover { background: var(--hover-tint); }
   72% { opacity: 1; clip-path: inset(0); transform: translateY(0); }
   84% { opacity: 1; clip-path: inset(0); transform: translateY(-22px) rotate(1deg); }
   100% { opacity: 1; clip-path: inset(0); transform: translateY(0) rotate(0); }
+}
+@keyframes guest-modal-retract {
+  0% { opacity: 1; clip-path: inset(0); transform: translateY(0) rotate(0); }
+  22% { opacity: 1; clip-path: inset(0); transform: translateY(-16px) rotate(-1deg); }
+  100% { opacity: 0; clip-path: inset(100% 0 0); transform: translateY(52px); }
 }
 @keyframes guest-happy-jump {
   0% { transform: translateY(0) rotate(0); }
@@ -1150,9 +1164,10 @@ html, body, .app-shell { background: var(--paper); }
 @media (prefers-reduced-motion: reduce) {
   .aurora-orb, .cta-ripples span, .hero-ring, .hero-orb-core, .hero-card, .support-pulse::after, .live-dot, .spin { animation: none !important; }
   .assistant-launcher:hover .assistant-launcher-guest, .assistant-launcher:focus-visible .assistant-launcher-guest { animation: none !important; }
-  .assistant-launcher-guest.guest-mascot--eject, .assistant-panel { animation: none !important; transform: none; }
+  .assistant-dock-printing .assistant-launcher-guest, .assistant-dock-closing .assistant-launcher-guest,
+  .assistant-panel, .assistant-panel-closing { animation: none !important; transform: none; }
   .auth-mascot, .auth-mobile-guest, .auth-card .field.is-typing input { animation: none !important; }
-  .guest-mascot--eject .guest-paper-out { animation: none !important; transform: none; }
+  .guest-mascot--eject .guest-paper-out, .guest-mascot--retract .guest-paper-out { animation: none !important; transform: none; }
   .guest-arm, .guest-eye { transition: none !important; }
   .auth-card .field > span, .auth-card .field input, .auth-submit { transition: none !important; }
   .hero-chip .live-dot { animation: brand-pulse 2s ease-out infinite !important; }
@@ -1246,9 +1261,14 @@ html, body, .app-shell { background: var(--paper); }
 .assistant-launcher { width: 60px; min-height: 60px; justify-content: center; padding: 10px; border-radius: 50%; }
 .assistant-launcher-guest { width: 38px; height: 36px; }
 .assistant-panel { position: relative; overflow: visible; transform-origin: bottom right; animation: guest-modal-launch 1.35s cubic-bezier(.2,.72,.28,1) .42s both; }
+.assistant-dock-printing .assistant-launcher-guest { animation: guest-grow-to-sheet 2.25s cubic-bezier(.2,.68,.28,1) both; }
+.assistant-dock-printing .assistant-panel { z-index: 2; }
+.assistant-launcher { position: relative; z-index: 1; }
+.assistant-dock-closing .assistant-launcher-guest { animation: guest-expand-retract .95s cubic-bezier(.2,.68,.28,1) both; }
+.assistant-dock-closing .assistant-launcher-guest.guest-mascot--retract .guest-paper-out { animation: guest-paper-retract .82s ease-in both; }
+.assistant-panel-closing { animation: guest-modal-retract .95s cubic-bezier(.55,0,.8,.25) both; }
 .assistant-panel::after { position: absolute; right: 22px; bottom: -9px; width: 18px; height: 18px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--card); content: ""; transform: rotate(45deg); }
-.assistant-launcher[aria-expanded="true"] { width: 76px; min-height: 76px; }
-.assistant-launcher[aria-expanded="true"] .assistant-launcher-guest { width: 50px; height: 46px; }
+.assistant-launcher-guest { width: 38px; height: 36px; }
 .nf-paper { --nf-line: #D6E2DD; --nf-ink: #1F363D; --nf-mid: #466068; --nf-faint: #6B8182; }
 .nf-head { border-bottom-color: #40798C; }
 .nf-badge { border-color: #40798C; background: #E8F1F3; color: #315F6B; }
@@ -1310,6 +1330,7 @@ html, body, .app-shell { background: var(--paper); }
 }
 
 @media (max-width: 420px) {
+  .assistant-launcher-guest { --guest-sheet-scale: 7.2; }
   .topbar { padding-inline: 12px; }
   .breadcrumbs { max-width: 35vw; }
   .topbar-clock { display: none; }
@@ -1322,6 +1343,13 @@ html, body, .app-shell { background: var(--paper); }
   .hero-inner { padding: 19px 16px; }
   .button, .button-primary, .button-secondary { min-height: 42px; }
   .auth-side { padding-inline: 18px; }
+}
+
+@media (min-width: 361px) and (max-width: 420px) {
+  .assistant-launcher-guest { --guest-sheet-scale: 9.2; }
+}
+@media (min-width: 421px) and (max-width: 720px) {
+  .assistant-launcher-guest { --guest-sheet-scale: 10.3; }
 }
 
 @media (max-width: 900px) {

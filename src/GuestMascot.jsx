@@ -1,6 +1,6 @@
 export default function GuestMascot({ mode = "idle", gaze = 0, className = "" }) {
   const pupilX = Math.max(-1, Math.min(1, Number(gaze) || 0)) * 4;
-  const modifier = mode === "email" ? " guest-mascot--email" : mode === "password" ? " guest-mascot--password" : mode === "eject" ? " guest-mascot--eject" : "";
+  const modifier = mode === "email" ? " guest-mascot--email" : mode === "password" ? " guest-mascot--password" : mode === "eject" ? " guest-mascot--eject" : mode === "retract" ? " guest-mascot--retract" : "";
 
   return (
     <span aria-hidden="true" className={`guest-mascot${modifier}${className ? ` ${className}` : ""}`}>
