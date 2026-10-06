@@ -926,25 +926,25 @@ tbody tr:hover { background: var(--hover-tint); }
   20%, 76% { opacity: .9; transform: scaleX(1); }
 }
 @keyframes guest-paper-to-modal {
-  0%, 12% { opacity: 0; clip-path: inset(100% 0 0); transform: translate(-50%, 4px) scale(.97, 1); }
-  16% { opacity: 1; clip-path: inset(100% 0 0); transform: translate(-50%, 1px) scale(.98, 1); }
-  24% { opacity: 1; clip-path: inset(82% 0 0); transform: translate(-50%, 0) scale(1); }
-  32%, 35% { opacity: 1; clip-path: inset(62% 0 0); transform: translate(-50%, 1px) scale(1); }
-  43%, 46% { opacity: 1; clip-path: inset(24% 0 0); transform: translate(-50%, 0) scale(1); }
-  50% { opacity: 1; clip-path: inset(0); transform: translate(-50%, -2px) scale(1); }
-  100% { opacity: 0; clip-path: inset(0); transform: translate(-50%, -2px) scale(.14, .12); }
+  0%, 12% { opacity: 0; clip-path: inset(100% 0 0); transform: translate(-50%, 4px) scale(1, 1); }
+  16% { opacity: 1; clip-path: inset(100% 0 0); transform: translate(-50%, 1px) scale(1, 1); }
+  24% { opacity: 1; clip-path: inset(82% 0 0); transform: translate(-50%, 0) scale(1, 1); }
+  32%, 35% { opacity: 1; clip-path: inset(62% 0 0); transform: translate(-50%, 1px) scale(1, 1); }
+  43%, 46% { opacity: 1; clip-path: inset(24% 0 0); transform: translate(-50%, 0) scale(1, 1); }
+  50% { opacity: 1; clip-path: inset(0); transform: translate(-50%, -2px) scale(1, 1); }
+  100% { opacity: 0; clip-path: inset(0); transform: translate(-50%, -2px) scale(1, .12); }
 }
 @keyframes guest-paper-retract-to-slot {
-  0% { opacity: 0; clip-path: inset(100% 0 0); transform: translate(-50%, -2px) scale(.14, .12); }
-  24% { opacity: 1; clip-path: inset(0); transform: translate(-50%, -2px) scale(1); }
-  76% { opacity: 1; clip-path: inset(0); transform: translate(-50%, 0) scale(1); }
-  100% { opacity: 0; clip-path: inset(100% 0 0); transform: translate(-50%, 4px) scale(.97, 1); }
+  0% { opacity: 0; clip-path: inset(100% 0 0); transform: translate(-50%, -2px) scale(1, .12); }
+  24% { opacity: 1; clip-path: inset(0); transform: translate(-50%, -2px) scale(1, 1); }
+  76% { opacity: 1; clip-path: inset(0); transform: translate(-50%, 0) scale(1, 1); }
+  100% { opacity: 0; clip-path: inset(100% 0 0); transform: translate(-50%, 4px) scale(1, 1); }
 }
 @keyframes guest-modal-expand {
-  0% { opacity: 0; transform: scale(.14, .12); border-radius: 6px; }
-  14% { opacity: 1; transform: scale(.2, .18); border-radius: 8px; }
-  58% { opacity: 1; transform: scale(.82, .78); border-radius: 14px; }
-  86% { opacity: 1; transform: scale(1.025, 1.025); border-radius: 19px; }
+  0% { opacity: 0; transform: scale(1, .12); border-radius: 6px; }
+  14% { opacity: 1; transform: scale(1, .18); border-radius: 8px; }
+  58% { opacity: 1; transform: scale(1, .78); border-radius: 14px; }
+  86% { opacity: 1; transform: scale(1, 1.025); border-radius: 19px; }
   100% { opacity: 1; transform: scale(1); border-radius: 18px; }
 }
 @keyframes guest-modal-retract {
@@ -1289,7 +1289,7 @@ html, body, .app-shell { background: var(--paper); }
 .assistant-dock-closing .assistant-launcher::before, .assistant-dock-closing .assistant-launcher::after { animation: guest-printer-detail-close .95s cubic-bezier(.2,.68,.28,1) both; }
 .assistant-dock-printing .assistant-panel { z-index: 2; }
 .assistant-launcher-guest .guest-paper-out { visibility: hidden; }
-.assistant-launcher-sheet { position: absolute; z-index: 2; bottom: calc(100% - 12px); left: 50%; width: 58px; height: 70px; border: 1px solid #b8d0cb; border-radius: 4px 4px 2px 2px; background: linear-gradient(#b8d0cb, #b8d0cb) center 19px / 30px 1px no-repeat, linear-gradient(#d1dfdb, #d1dfdb) center 27px / 30px 1px no-repeat, linear-gradient(#d1dfdb, #d1dfdb) center 35px / 22px 1px no-repeat, #fff; box-shadow: 0 8px 18px rgba(31, 54, 61, .18); clip-path: inset(100% 0 0); opacity: 0; pointer-events: none; transform: translate(-50%, 4px) scale(.97, 1); transform-origin: center bottom; }
+.assistant-launcher-sheet { position: absolute; z-index: 2; bottom: calc(100% - 12px); left: 50%; width: var(--guest-printer-width); height: 70px; border: 1px solid #b8d0cb; border-radius: 4px 4px 2px 2px; background: linear-gradient(#b8d0cb, #b8d0cb) center 19px / 72% 1px no-repeat, linear-gradient(#d1dfdb, #d1dfdb) center 27px / 72% 1px no-repeat, linear-gradient(#d1dfdb, #d1dfdb) center 35px / 56% 1px no-repeat, #fff; box-shadow: 0 8px 18px rgba(31, 54, 61, .18); clip-path: inset(100% 0 0); opacity: 0; pointer-events: none; transform: translate(-50%, 4px) scale(1); transform-origin: center bottom; }
 .assistant-dock-printing .assistant-launcher-sheet { animation: guest-paper-to-modal 2s cubic-bezier(.18,.78,.26,1) both; }
 .assistant-dock-closing .assistant-launcher { z-index: 3; }
 .assistant-dock-closing .assistant-launcher-sheet--retract { animation: guest-paper-retract-to-slot .82s ease-in both; }
