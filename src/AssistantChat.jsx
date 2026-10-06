@@ -32,7 +32,7 @@ export default function AssistantChat({ companyId, enabled, personName }) {
       setOpen(false);
       setClosing(false);
       closeTimer.current = null;
-    }, 950);
+    }, 1200);
   };
 
   const send = async (value = draft) => {
