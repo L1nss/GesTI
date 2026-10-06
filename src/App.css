@@ -1192,6 +1192,23 @@ html, body, .app-shell { background: var(--paper); }
 .auth-brand .brand-mark, .auth-mobile-brand .brand-mark { color: #9EC1A3; }
 .auth-card .field input { caret-color: #40798C; }
 .auth-card .field input:focus { border-color: #70A9A1; box-shadow: 0 0 0 3px rgba(112, 169, 161, .18); }
+.auth-card input:-webkit-autofill,
+.auth-card input:-webkit-autofill:hover,
+.auth-card input:-webkit-autofill:focus,
+.auth-card input:-webkit-autofill:active,
+.auth-card input:autofill {
+  -webkit-text-fill-color: var(--ink);
+  caret-color: var(--accent);
+  -webkit-box-shadow: 0 0 0 1000px var(--card) inset;
+  box-shadow: 0 0 0 1000px var(--card) inset;
+  border-color: var(--line);
+}
+.auth-card input:-webkit-autofill:focus,
+.auth-card input:autofill:focus {
+  border-color: #70A9A1;
+  -webkit-box-shadow: 0 0 0 1000px var(--card) inset, 0 0 0 3px rgba(112, 169, 161, .18);
+  box-shadow: 0 0 0 1000px var(--card) inset, 0 0 0 3px rgba(112, 169, 161, .18);
+}
 .auth-submit { background: #40798C; }
 .auth-submit:hover { background: #315F6B; }
 .login-welcome, .login-welcome-stage { background: #1F363D; }
