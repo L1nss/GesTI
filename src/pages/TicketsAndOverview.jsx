@@ -207,7 +207,7 @@ export function TeamMetrics({ tickets }) {
 }
 
 /* Visão geral: herói, indicadores e painéis resumo. */
-export function Overview({ tickets, overdueTickets, lowStock = [], pendingExpenses = [], onNavigate, company, personName, role, canSeeFinances, canBackup, onBackupExport, onBackupImport, backupBusy }) {
+export function Overview({ tickets, overdueTickets, lowStock = [], pendingExpenses = [], onNavigate, company, personName, role, canSeeFinances, canBackup, onBackupExport, onBackupImport, backupBusy, remoteAuth = false }) {
   const openTickets = tickets.filter((ticket) => ticket.status === "Aberto").length;
   const processingTickets = tickets.filter((ticket) => ticket.status === "Em processamento").length;
   const recentTickets = [...tickets].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 4);
@@ -241,7 +241,7 @@ export function Overview({ tickets, overdueTickets, lowStock = [], pendingExpens
           {canSeeFinances && <button className="panel overview-finance" onClick={() => onNavigate("Custos")} type="button"><span className="metric-icon metric-green"><Icon name="receipt" size={19} /></span><span><strong>{pendingExpenses.length}</strong><small>despesas aguardando análise</small></span><Icon name="arrow" size={16} /></button>}
         </div>}
       </div></Reveal>
-      {canBackup && <details className="overview-backup"><summary>Backup e restauração</summary><section className="panel backup-panel"><div><strong>Proteção dos dados</strong><p>Baixe uma cópia desta empresa ou restaure um backup feito no GesTI.</p></div><div className="backup-actions"><button className="button button-secondary" onClick={onBackupExport} type="button"><Icon name="download" size={15} /> Baixar backup</button><label className="button button-secondary">{backupBusy ? "Restaurando…" : "Restaurar backup"}<input accept="application/json,.json" disabled={backupBusy} hidden onChange={onBackupImport} type="file" /></label></div></section></details>}
+      {canBackup && <details className="overview-backup"><summary>{remoteAuth ? "Exportar dados" : "Backup e restauração"}</summary><section className="panel backup-panel"><div><strong>Proteção dos dados</strong><p>{remoteAuth ? "Baixe uma cópia dos dados acessíveis nesta empresa. A restauração do Supabase deve ser feita pela administração do banco." : "Baixe uma cópia desta empresa ou restaure um backup feito no GesTI."}</p></div><div className="backup-actions"><button className="button button-secondary" onClick={onBackupExport} type="button"><Icon name="download" size={15} /> {remoteAuth ? "Baixar cópia" : "Baixar backup"}</button>{!remoteAuth && <label className="button button-secondary">{backupBusy ? "Restaurando…" : "Restaurar backup"}<input accept="application/json,.json" disabled={backupBusy} hidden onChange={onBackupImport} type="file" /></label>}</div></section></details>}
     </>
   );
 }

@@ -517,6 +517,7 @@ export function useStore() {
     let hasPendingInvite = false;
     try { hasPendingInvite = Boolean(window.localStorage.getItem(`tigest-pending-invite-${normalized}`)); } catch { /* remote auth still gets its usual attempt */ }
     let authenticated = null;
+    let remoteError = "";
     for (const candidate of (hasPendingInvite ? [] : orgs.filter((item) => !/^[0-9a-f-]{36}$/i.test(item.id)))) {
       const person = candidate.people.find((item) => String(item.login || item.email).toLowerCase() === normalized);
       if (person && await verifyPassword(password, person.passwordHash)) {
@@ -569,8 +570,8 @@ export function useStore() {
         setSession({ orgId: remoteCompany.id, email: user.email, name: membership.display_name, role: membership.role, userId: user.id, at: new Date().toISOString(), backend: "supabase" });
         pushEvent(remoteCompany.id, `${membership.display_name} entrou no GesTI via Supabase`);
         return { ok: true, person: { name: membership.display_name }, company: remoteCompany.name };
-      } catch {
-        /* Contas locais de demonstração e modo sem rede continuam funcionando. */
+      } catch (error) {
+        remoteError = error?.message || "Não foi possível acessar o Supabase. Tente novamente.";
       }
     }
 
@@ -586,7 +587,7 @@ export function useStore() {
       } catch {
         // Best-effort.
       }
-      return { ok: false, error: "E-mail ou senha inválidos. Verifique com o administrador da sua empresa." };
+      return { ok: false, error: remoteError || "E-mail ou senha inválidos. Verifique com o administrador da sua empresa." };
     }
 
     try {
