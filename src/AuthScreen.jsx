@@ -13,28 +13,14 @@ const DEMO_ACCOUNTS = [
 const recoveryFromLink = supabaseConsumeRecoveryLink();
 
 function BrandPanel() {
-  const points = [
-    { icon: "building", title: "Cada empresa com seu espaço", text: "Cadastro próprio, equipe e dados isolados." },
-    { icon: "chart", title: "Custos sob controle", text: "Gráficos de gastos por mês e por categoria." },
-    { icon: "file", title: "Documentos de demonstração", text: "Registros e impressão sem valor fiscal." },
-  ];
   return (
-    <div className="auth-brand">
-      <div aria-hidden="true" className="auth-brand-aurora"><span /><span /><span /></div>
+    <aside aria-label="GesTI" className="auth-brand">
       <div className="auth-brand-inner">
-        <span className="brand-mark brand-mark-lg">G</span>
-        <h1><strong>GesTI</strong><em>Gestão de TI multiempresa</em></h1>
-        <ul>
-          {points.map((point) => (
-            <li key={point.title}>
-              <span className="auth-point-icon"><Icon name={point.icon} size={16} /></span>
-              <span className="auth-point-copy"><strong>{point.title}</strong><small>{point.text}</small></span>
-            </li>
-          ))}
-        </ul>
-        <p className="auth-brand-note">Sessão isolada por empresa · Armazenamento local ou Supabase</p>
+        <div className="auth-brand-lockup"><span className="brand-mark brand-mark-lg">G</span><strong>GesTI</strong></div>
+        <div className="auth-brand-copy"><h1>Sua operação<br />de TI.</h1><p>Acompanhe chamados, peças, custos e documentos da equipe.</p></div>
+        <div className="auth-brand-bottom"><span>Chamados <i /> Estoque <i /> Custos <i /> Documentos</span><p>Acesso da equipe da sua organização.</p></div>
       </div>
-    </div>
+    </aside>
   );
 }
 
@@ -68,12 +54,12 @@ function LoginForm({ store, onSwitch }) {
   };
 
   return (
-    <motion.div animate={{ opacity: 1, y: 0 }} className="auth-card" initial={reduceMotion ? false : { opacity: 0, y: 18 }} transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}>
-      <h2>Entrar na sua empresa</h2>
-      <p className="auth-subtitle">Acesse com o e-mail corporativo cadastrado pela sua organização.</p>
+    <motion.div animate={{ opacity: 1 }} className="auth-card" initial={reduceMotion ? false : { opacity: 0 }} transition={{ duration: 0.18 }}>
+      <h2>Acesse sua conta</h2>
+      <p className="auth-subtitle">Entre com o e-mail e a senha da sua conta.</p>
       <form className="auth-form" onSubmit={submit}>
         <Field label="E-mail corporativo">
-          <input autoComplete="username" name="email" onChange={(event) => setEmail(event.target.value)} placeholder="nome@empresa.com.br" required type="email" value={email} />
+          <input autoComplete="username" name="email" onChange={(event) => setEmail(event.target.value)} placeholder="voce@empresa.com.br" required type="email" value={email} />
         </Field>
         <Field label="Senha">
           <div className="password-wrap">
@@ -83,10 +69,10 @@ function LoginForm({ store, onSwitch }) {
         </Field>
         {error && <p className="auth-error" role="alert"><Icon name="warning" size={14} /> {error}</p>}
         <Button busy={busy} className="auth-submit" disabled={busy} type="submit">
-          {busy ? <><Icon className="spin" name="spinner" size={17} /> Verificando acesso…</> : <><Icon name="arrow" size={16} /> Entrar no workspace</>}
+          {busy ? <><Icon className="spin" name="spinner" size={17} /> Verificando acesso…</> : <>Entrar</>}
         </Button>
       </form>
-      {supabaseEnabled && <button className="text-link" disabled={resetBusy} onClick={async () => {
+      {supabaseEnabled && <button className="text-link auth-recovery" disabled={resetBusy} onClick={async () => {
         if (!email.trim()) { setError("Informe seu e-mail para receber o link de recuperação."); return; }
         setResetBusy(true);
         try {
@@ -96,20 +82,13 @@ function LoginForm({ store, onSwitch }) {
         } catch (cause) { setError(cause.message || "Não foi possível solicitar a recuperação."); }
         finally { setResetBusy(false); }
       }} type="button">{resetBusy ? "Solicitando recuperação…" : "Esqueci minha senha"}</button>}
-      <div className="auth-switch"><span>Ainda não tem conta da sua empresa?</span><button onClick={onSwitch} type="button">Cadastrar empresa</button></div>
-      <div className="demo-box">
-        <strong>Conta demonstrativa da Acme Tecnologia</strong>
-        <small>Senha única para todos os perfis: <code>acme123</code></small>
-        <div className="demo-accounts">
-          {DEMO_ACCOUNTS.map((account) => (
-            <button key={account.email} onClick={() => { setEmail(account.email); setPassword("acme123"); setError(""); }} type="button">
-              <span className="avatar small-avatar">{account.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span>
-              <span><strong>{account.role}</strong><small>{account.email}</small></span>
-              <Icon name="chevron" size={14} />
-            </button>
-          ))}
+      <div className="auth-switch auth-switch-login"><span>Precisa cadastrar sua empresa?</span><button className="auth-register-button" onClick={onSwitch} type="button">Criar cadastro</button></div>
+      <details className="demo-box">
+        <summary>Acessar conta de demonstração</summary>
+        <div className="demo-details"><small>Senha para os perfis de demonstração: <code>acme123</code></small>
+          <div className="demo-accounts">{DEMO_ACCOUNTS.map((account) => <button key={account.email} onClick={() => { setEmail(account.email); setPassword("acme123"); setError(""); }} type="button"><strong>{account.role}</strong><span>{account.email}</span></button>)}</div>
         </div>
-      </div>
+      </details>
     </motion.div>
   );
 }
@@ -278,7 +257,7 @@ function InviteAcceptForm({ store, token, onBack }) {
       setError(cause.message || "Não foi possível criar a conta. Se já tem conta, entre com ela para aceitar o convite.");
     } finally { setBusy(false); }
   };
-  return <motion.div animate={{ opacity: 1, y: 0 }} className="auth-card" initial={{ opacity: 0, y: 18 }} transition={{ duration: 0.35 }}>
+  return <motion.div animate={{ opacity: 1 }} className="auth-card" initial={{ opacity: 0 }} transition={{ duration: 0.18 }}>
     <h2>Convite para sua equipe</h2>
     <p className="auth-subtitle">Crie seu acesso GesTI com o mesmo e-mail para o qual o convite foi emitido.</p>
     <form className="auth-form" onSubmit={submit}>
@@ -303,15 +282,16 @@ export default function AuthScreen({ store }) {
     <div className="auth-screen">
       <BrandPanel />
       <div className="auth-side">
+        <div className="auth-mobile-brand"><span className="brand-mark">G</span><strong>GesTI</strong></div>
         <AnimatePresence mode="wait" initial={false}>
-          <motion.div animate={{ opacity: 1, x: 0 }} exit={mode === "login" ? { opacity: 0, x: -18 } : { opacity: 0, x: 18 }} initial={{ opacity: 0, x: 18 }} key={mode} transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}>
+          <motion.div animate={{ opacity: 1 }} exit={{ opacity: 0 }} initial={{ opacity: 0 }} key={mode} transition={{ duration: 0.16 }}>
             {mode === "recovery" ? <div className="auth-card"><h2>Definir nova senha</h2><p className="auth-subtitle">Use pelo menos 8 caracteres.</p><form className="auth-form" onSubmit={async (event) => { event.preventDefault(); setRecoveryBusy(true); setRecoveryError(""); try { await supabaseCompleteRecovery(recoveryPassword); setMode("login"); } catch (error) { setRecoveryError(error.message || "Não foi possível trocar a senha."); } finally { setRecoveryBusy(false); } }}><Field label="Nova senha"><input autoComplete="new-password" minLength={8} onChange={(event) => setRecoveryPassword(event.target.value)} required type="password" value={recoveryPassword} /></Field>{recoveryError && <p className="auth-error" role="alert">{recoveryError}</p>}<Button disabled={recoveryBusy} type="submit">{recoveryBusy ? "Salvando…" : "Salvar nova senha"}</Button></form></div>
               : mode === "invite" && invitation ? <InviteAcceptForm onBack={() => setMode("login")} store={store} token={invitation} /> : mode === "login"
               ? <LoginForm onSwitch={() => setMode("register")} store={store} />
               : <RegisterForm onSwitch={() => setMode("login")} store={store} />}
           </motion.div>
         </AnimatePresence>
-        <p className="auth-foot">GesTI · Contas demonstrativas usam armazenamento local; novas empresas e convites usam Supabase.</p>
+        <p className="auth-foot">Acesso reservado à equipe da sua empresa.</p>
       </div>
     </div>
   );
