@@ -51,7 +51,7 @@ export default function AssistantChat({ companyId, enabled, personName }) {
         <form className="assistant-composer" onSubmit={(event) => { event.preventDefault(); void send(); }}><textarea aria-label="Mensagem para o Guest" maxLength={1500} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder="Pergunte sobre o GesTI..." rows={2} value={draft} /><button aria-label="Enviar mensagem" disabled={!canSend} type="submit"><Icon name={busy ? "spinner" : "arrow"} size={17} /></button></form>
         <p className="assistant-privacy">Usa somente o GesTI e os dados permitidos pelo seu perfil. Perguntas e contexto autorizado são enviados ao Gemini para gerar respostas.</p>
       </section>}
-      <button aria-expanded={open} aria-label={open ? "Fechar Guest" : "Abrir Guest"} className="assistant-launcher" onClick={() => setOpen((current) => !current)} type="button">{open ? <Icon name="close" size={21} /> : <GuestMascot className="assistant-launcher-guest" />}<span>{open ? "Fechar" : "Guest"}</span></button>
+      <button aria-expanded={open} aria-label={open ? "Fechar conversa com Guest" : "Abrir conversa com Guest"} className="assistant-launcher" onClick={() => setOpen((current) => !current)} title={open ? "Fechar conversa" : "Conversar com Guest"} type="button"><GuestMascot className="assistant-launcher-guest" mode={open ? "eject" : "idle"} /></button>
     </div>
   );
 }

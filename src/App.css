@@ -907,8 +907,20 @@ tbody tr:hover { background: var(--hover-tint); }
 .assistant-mark { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 12px; background: color-mix(in srgb, var(--accent) 12%, var(--card)); color: var(--accent); }
 .assistant-guest-icon { width: 30px; height: 30px; }
 .assistant-launcher-guest { width: 27px; height: 27px; }
-.assistant-launcher:hover .assistant-launcher-guest,
-.assistant-launcher:focus-visible .assistant-launcher-guest { animation: guest-happy-jump .62s cubic-bezier(.2,.8,.2,1) both; }
+.assistant-launcher:hover .assistant-launcher-guest:not(.guest-mascot--eject),
+.assistant-launcher:focus-visible .assistant-launcher-guest:not(.guest-mascot--eject) { animation: guest-happy-jump .62s cubic-bezier(.2,.8,.2,1) both; }
+.assistant-launcher-guest.guest-mascot--eject { animation: guest-launch-print .76s cubic-bezier(.18,.78,.26,1.12) both; }
+@keyframes guest-launch-print {
+  0% { transform: translateY(0) scale(1); }
+  32% { transform: translateY(-14px) scale(1.08); }
+  72% { transform: translateY(3px) scale(.96); }
+  100% { transform: translateY(0) scale(1); }
+}
+@keyframes guest-modal-launch {
+  0% { opacity: 0; transform: translateY(42px) scale(.14, .18); }
+  58% { opacity: 1; transform: translateY(-7px) scale(1.025, 1.035); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
 @keyframes guest-happy-jump {
   0% { transform: translateY(0) rotate(0); }
   38% { transform: translateY(-17px) rotate(-9deg); }
@@ -1135,6 +1147,7 @@ html, body, .app-shell { background: var(--paper); }
 @media (prefers-reduced-motion: reduce) {
   .aurora-orb, .cta-ripples span, .hero-ring, .hero-orb-core, .hero-card, .support-pulse::after, .live-dot, .spin { animation: none !important; }
   .assistant-launcher:hover .assistant-launcher-guest, .assistant-launcher:focus-visible .assistant-launcher-guest { animation: none !important; }
+  .assistant-launcher-guest.guest-mascot--eject, .assistant-panel { animation: none !important; transform: none; }
   .auth-mascot, .auth-mobile-guest, .auth-card .field.is-typing input { animation: none !important; }
   .guest-mascot--eject .guest-paper-out { animation: none !important; transform: none; }
   .guest-arm, .guest-eye { transition: none !important; }
@@ -1227,6 +1240,9 @@ html, body, .app-shell { background: var(--paper); }
 .guest-mascot--eject .guest-signal { filter: drop-shadow(0 0 7px #70A9A1); }
 .assistant-launcher { box-shadow: 0 12px 32px rgba(31, 54, 61, .2); }
 .assistant-panel { box-shadow: 0 20px 60px rgba(31, 54, 61, .18); }
+.assistant-launcher { width: 60px; min-height: 60px; justify-content: center; padding: 10px; border-radius: 50%; }
+.assistant-launcher-guest { width: 38px; height: 36px; }
+.assistant-panel { transform-origin: bottom right; animation: guest-modal-launch .76s cubic-bezier(.18,.78,.26,1.12) both; }
 .nf-paper { --nf-line: #D6E2DD; --nf-ink: #1F363D; --nf-mid: #466068; --nf-faint: #6B8182; }
 .nf-head { border-bottom-color: #40798C; }
 .nf-badge { border-color: #40798C; background: #E8F1F3; color: #315F6B; }
