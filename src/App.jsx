@@ -79,6 +79,7 @@ function Workspace({ store, theme, toggleTheme }) {
   const [backupBusy, setBackupBusy] = useState(false);
   const [tourStep, setTourStep] = useState(() => org.onboardingComplete ? null : 0);
   const [remoteReady, setRemoteReady] = useState(() => !hasSupabaseSession() || !/^[0-9a-f-]{36}$/i.test(org.id));
+  const [remoteError, setRemoteError] = useState("");
 
   useEffect(() => {
     document.body.classList.toggle("report-printing", modal === "report");
@@ -107,23 +108,49 @@ function Workspace({ store, theme, toggleTheme }) {
       const presenceByUser = new Map(remotePresence.map((row) => [row.user_id, row]));
       const remotePeople = remoteMembers.map((member) => ({ id: member.user_id, name: member.display_name, email: member.user_id === session.userId ? session.email : "", role: member.role, capabilities: member.capabilities || {}, ...(presenceByUser.has(member.user_id) ? { available: presenceByUser.get(member.user_id).available, maxActiveTickets: presenceByUser.get(member.user_id).max_active_tickets } : { available: member.available === true, maxActiveTickets: member.max_active_tickets || 3 }) }));
       const peopleById = new Map(remotePeople.map((person) => [person.id, person]));
-      const mappedTickets = remoteTickets.map((ticket) => ({ id: ticket.id, title: ticket.title, description: ticket.description, category: ticket.category, status: ticket.status, priority: ticket.priority, requester: peopleById.get(ticket.requester_user_id)?.name || (ticket.requester_user_id === session.userId ? session.name : "Solicitante"), customerName: peopleById.get(ticket.requester_user_id)?.name || session.name, assignee: peopleById.get(ticket.assignee_user_id)?.name || "—", assignmentStatus: ({ pending_acceptance: "Pendente de aceite", accepted: "Aceito", declined: "Recusado", unassigned: "Sem técnico disponível" })[ticket.assignment_status] || "Sem técnico disponível", dueAt: ticket.due_at, createdAt: ticket.created_at, resolvedAt: ticket.resolved_at, satisfaction: ticket.satisfaction_score ? { score: ticket.satisfaction_score, comment: ticket.satisfaction_comment || "" } : null, slaHours: Math.max(1, Math.round((Date.parse(ticket.due_at) - Date.parse(ticket.created_at)) / 3600000)), serviceIds: [], comments: [], attachments: [], history: [{ status: ticket.status, person: peopleById.get(ticket.assignee_user_id)?.name || session.name, date: ticket.created_at, note: "Carregado do GesTI (Supabase)." }] }));
+      const mappedTickets = remoteTickets.map((ticket) => {
+        const details = ticket.details && typeof ticket.details === "object" ? ticket.details : {};
+        const requesterName = peopleById.get(ticket.requester_user_id)?.name || (ticket.requester_user_id === session.userId ? session.name : "Solicitante");
+        return {
+          id: ticket.id, title: ticket.title, description: ticket.description, category: ticket.category,
+          status: ticket.status, priority: ticket.priority, requester: requesterName,
+          customerName: details.customerName || requesterName, customerId: details.customerId || null,
+          assignee: peopleById.get(ticket.assignee_user_id)?.name || "—",
+          assignmentStatus: ({ pending_acceptance: "Pendente de aceite", accepted: "Aceito", declined: "Recusado", unassigned: "Sem técnico disponível" })[ticket.assignment_status] || "Sem técnico disponível",
+          dueAt: ticket.due_at, createdAt: ticket.created_at, resolvedAt: ticket.resolved_at,
+          satisfaction: ticket.satisfaction_score ? { score: ticket.satisfaction_score, comment: ticket.satisfaction_comment || "" } : null,
+          slaHours: Math.max(1, Math.round((Date.parse(ticket.due_at) - Date.parse(ticket.created_at)) / 3600000)),
+          serviceIds: Array.isArray(details.serviceIds) ? details.serviceIds : [],
+          servicePrices: details.servicePrices && typeof details.servicePrices === "object" ? details.servicePrices : {},
+          comments: Array.isArray(details.comments) ? details.comments : [],
+          attachments: Array.isArray(details.attachments) ? details.attachments : [],
+          invoiceIds: Array.isArray(details.invoiceIds) ? details.invoiceIds : [],
+          history: Array.isArray(details.history) && details.history.length ? details.history : [{ status: ticket.status, person: requesterName, date: ticket.created_at, note: "Criado no GesTI." }],
+          prioritySource: details.prioritySource || "auto", priorityBy: details.priorityBy || "Sistema",
+          firstResponseAt: details.firstResponseAt || null,
+        };
+      });
       const grouped = new Map(["clients", "inventory", "services", "expenses", "invoices", "movements"].map((type) => [type, []]));
       for (const row of records) grouped.get(row.entity_type)?.push(row.payload);
       const remoteCompany = companyRows[0];
+      if (!remoteCompany || !remoteMembers.some((member) => member.user_id === session.userId)) {
+        notify({ tone: "info", title: "Acesso encerrado", message: "Sua associação com esta empresa não está mais ativa." });
+        logout();
+        return;
+      }
       setData((current) => ({ ...current, ...(remoteCompany ? { company: { ...current.company, ...(remoteCompany.profile_data || {}), ...(remoteCompany.branding || {}), name: remoteCompany.name } } : {}), people: remotePeople, tickets: mappedTickets, suppliers: remoteSuppliers.map((row) => ({ id: `FOR-${row.id}`, remoteId: row.id, name: row.name, email: row.email || "", phone: row.phone || "", active: row.active, createdAt: row.created_at })), budgets: remoteBudgets.map((row) => ({ id: row.id, category: row.category, month: row.month, amount: Number(row.limit_amount) })), replyTemplates: remoteReplies.map((row) => ({ id: row.id, remoteId: row.id, title: row.title, body: row.body, active: row.active })), clients: grouped.get("clients"), inventory: grouped.get("inventory"), services: grouped.get("services"), expenses: grouped.get("expenses"), invoices: grouped.get("invoices"), movementLog: grouped.get("movements"), onboardingComplete: Boolean(onboarding[0]?.completed_at) }));
       if (onboarding[0]?.completed_at) setTourStep(null);
       setRemoteReady(true);
-    }).catch((error) => { if (active) void captureAppError(error, org.id); });
+    }).catch((error) => { if (active) { setRemoteError(error.message || "Não foi possível carregar os dados da empresa."); void captureAppError(error, org.id); } });
     return () => { active = false; };
-  }, [org.id, session.userId, session.email, session.name, setData]);
+  }, [org.id, session.userId, session.email, session.name, setData, logout, notify]);
 
   useEffect(() => {
     if (!remoteReady || !hasSupabaseSession() || !session.userId || !/^[0-9a-f-]{36}$/i.test(org.id)) return;
     const rows = [
       ["clients", org.clients || []], ["inventory", org.inventory || []], ["services", org.services || []],
-      ["expenses", org.expenses || []], ["invoices", org.invoices || []], ["movements", org.movementLog || []],
-    ].filter(([entity_type]) => ({ clients: permissions.manageClients === true, inventory: permissions.manageStock === true, services: permissions.manageServices === true, expenses: permissions.viewCosts === true, invoices: permissions.viewCosts === true || permissions.claimTickets === true, movements: permissions.manageStock === true })[entity_type]).flatMap(([entity_type, items]) => items.filter((item) => item?.id).map((payload) => ({ company_id: org.id, entity_type, entity_id: String(payload.id), payload, updated_by: session.userId })));
+      ["expenses", org.expenses || []], ["movements", org.movementLog || []],
+    ].filter(([entity_type]) => ({ clients: permissions.manageClients === true, inventory: permissions.manageStock === true, services: permissions.manageServices === true, expenses: permissions.approve === true, movements: permissions.manageStock === true })[entity_type]).flatMap(([entity_type, items]) => items.filter((item) => item?.id).map((payload) => ({ company_id: org.id, entity_type, entity_id: String(payload.id), payload, updated_by: session.userId })));
     if (!rows.length) return undefined;
     const timer = window.setTimeout(() => { void restInsert("workspace_records", rows, { upsert: true, onConflict: "company_id,entity_type,entity_id", returnRepresentation: false }).catch((error) => void captureAppError(error, org.id)); }, 350);
     return () => window.clearTimeout(timer);
@@ -165,11 +192,15 @@ function Workspace({ store, theme, toggleTheme }) {
 
   const pageCapabilities = { Clientes: ["manageClients"], Estoque: ["manageStock"], Custos: ["viewCosts"], Empresa: ["managePeople", "manageCompany"], Logs: ["clearLogs"] };
   const pagesForRole = PAGES.filter((name) => {
+    if (name === "Notas fiscais") return can("viewCosts") || can("claimTickets");
     const baseAccess = (ROLE_PAGES[role] || PAGES).includes(name);
     const capabilities = pageCapabilities[name] || [];
     const overrides = capabilities.filter((capability) => Object.hasOwn(currentPerson?.capabilities || {}, capability));
     return overrides.length ? capabilities.some(can) : baseAccess;
   });
+  useEffect(() => {
+    if (!pagesForRole.includes(page)) navigateToPage("Visão geral");
+  }, [page, pagesForRole, navigateToPage]);
   const overdueTickets = pendingTickets.filter((ticket) => ticket.dueAt && new Date(ticket.dueAt).getTime() < now.getTime());
   /* Chamados a 25% do prazo: alerta antes de estourar. */
   const dueSoonTickets = pendingTickets.filter((ticket) => {
@@ -238,8 +269,8 @@ function Workspace({ store, theme, toggleTheme }) {
     /* ID gerado sobre a lista COMPLETA (antes usava a lista visível do
        Funcionário, permitindo IDs duplicados). */
     const ticket = {
-      id: nextId("CH", tickets), customerId: selectedClient?.id || null,
-      title, description, category,
+      id: remoteTicket ? `CH-${crypto.randomUUID().slice(0, 8).toUpperCase()}` : nextId("CH", tickets), customerId: selectedClient?.id || null,
+      title, description, category: category || "Outro",
       priority: chosenPriority,
       prioritySource: isTech && data.get("priorityOverride") ? "manual" : "auto",
       priorityBy: isTech && data.get("priorityOverride") ? `${currentPerson.name} (${role})` : "Sistema (classificação automática)",
@@ -250,20 +281,30 @@ function Workspace({ store, theme, toggleTheme }) {
     setTickets((items) => [ticket, ...items]);
     if (hasSupabaseSession() && session.userId && /^[0-9a-f-]{36}$/i.test(org.id)) {
       const requester = people.find((person) => person.email === currentPerson.email);
-      void restInsert("tickets", { company_id: org.id, id: ticket.id, title, description, category: category || "Outro", status: ticket.status, priority: chosenPriority, requester_user_id: session.userId, due_at: ticket.dueAt }).then(() => restRpc("assign_ticket", { p_company_id: org.id, p_ticket_id: ticket.id })).then(async (assigneeId) => {
+      void restInsert("tickets", { company_id: org.id, id: ticket.id, title, description, category: category || "Outro", priority: chosenPriority, requester_user_id: session.userId, details: { customerName: ticket.customerName, customerId: ticket.customerId, prioritySource: ticket.prioritySource } }).then((rows) => {
+        const saved = rows?.[0];
+        if (saved) setTickets((items) => items.map((item) => item.id === ticket.id ? { ...item, priority: saved.priority, dueAt: saved.due_at, createdAt: saved.created_at } : item));
+        void writeAuditEvent(org.id, session.userId, "ticket.created", "ticket", ticket.id, { priority: saved?.priority || chosenPriority, requester_known: Boolean(requester) });
+        notify({ tone: "success", title: "Chamado registrado", message: `${ticket.id} foi salvo. Selecionando técnico disponível.` });
+        return restRpc("assign_ticket", { p_company_id: org.id, p_ticket_id: ticket.id })
+          .catch((error) => { void captureAppError(error, org.id); return null; });
+      }).then(async (assigneeId) => {
         let assignee = null;
         if (assigneeId) assignee = people.find((person) => person.id === assigneeId) || (await restSelect("memberships", `company_id=eq.${org.id}&user_id=eq.${assigneeId}`))[0];
         const name = assignee?.name || assignee?.display_name || "—";
         const status = assigneeId ? "Pendente de aceite" : "Sem técnico disponível";
         setTickets((items) => items.map((item) => item.id === ticket.id ? { ...item, assignee: name, assignmentStatus: status } : item));
         notify({ tone: "success", message: assigneeId ? `${ticket.id} enviado para ${name} aceitar.` : `${ticket.id} aguardando técnico disponível.`, title: "Atribuição automática" });
-      }).catch((error) => { void captureAppError(error, org.id); });
-      void writeAuditEvent(org.id, session.userId, "ticket.created", "ticket", ticket.id, { priority: chosenPriority, assignment: ticket.assignmentStatus, requester_known: Boolean(requester) });
+      }).catch((error) => {
+        setTickets((items) => items.filter((item) => item.id !== ticket.id));
+        notify({ tone: "info", title: "Chamado não confirmado", message: error.message || "Tente registrar novamente." });
+        void captureAppError(error, org.id);
+      });
     }
     logEvent(org.id, currentPerson.name, "Chamado criado", `${ticket.id} — ${ticket.title} · prioridade ${chosenPriority}${chosenPriority === autoPriority ? " (auto)" : " (ajustada)"}`, chosenPriority === "Urgente" ? "warning" : "info");
     setModal("");
     navigate("Chamados");
-    notify({ tone: "success", message: `Chamado ${ticket.id} aberto${assignedTechnician ? ` · enviado a ${assignedTechnician.name} para aceite` : remoteTicket ? " · selecionando técnico disponível" : " · aguardando técnico disponível"}.`, title: "Chamado registrado" });
+    notify({ tone: remoteTicket ? "info" : "success", message: remoteTicket ? `Enviando ${ticket.id} ao servidor…` : `Chamado ${ticket.id} aberto${assignedTechnician ? ` · enviado a ${assignedTechnician.name} para aceite` : " · aguardando técnico disponível"}.`, title: remoteTicket ? "Registro em andamento" : "Chamado registrado" });
   };
 
   const addClient = (event) => {
@@ -297,8 +338,12 @@ function Workspace({ store, theme, toggleTheme }) {
     notify({ tone: "success", title: client.active === false ? "Cliente reativado" : "Cliente arquivado", message: client.name });
   };
 
-  const changeTicketPriority = (ticket, priority) => {
+  const changeTicketPriority = async (ticket, priority) => {
     if (!ticket || ticket.priority === priority) return;
+    if (session.backend === "supabase") {
+      try { await restRpc("change_ticket_priority", { p_company_id: org.id, p_ticket_id: ticket.id, p_priority: priority }); }
+      catch (error) { notify({ tone: "info", title: "Prioridade não alterada", message: error.message }); return; }
+    }
     const stamp = currentDateTime();
     setTickets((items) => items.map((item) => (item.id === ticket.id ? {
       ...item,
@@ -313,7 +358,7 @@ function Workspace({ store, theme, toggleTheme }) {
     notify({ tone: priority === "Urgente" ? "info" : "success", message: `${ticket.id} agora tem prioridade ${priority}.`, title: "Prioridade atualizada" });
   };
 
-  const claimTicket = (ticket) => {
+  const claimTicket = async (ticket) => {
     if (!can("claimTickets")) {
       notify({ tone: "info", message: "Somente o Admin e a equipe de TI podem adquirir chamados.", title: "Acesso restrito" });
       return;
@@ -323,9 +368,12 @@ function Workspace({ store, theme, toggleTheme }) {
       return;
     }
     if (ticket.assignmentStatus === "Pendente de aceite" && ticket.assignee === currentPerson.name) {
+      if (session.backend === "supabase") {
+        try { await restRpc("respond_to_ticket_assignment", { p_company_id: org.id, p_ticket_id: ticket.id, p_accept: true }); }
+        catch (error) { notify({ tone: "info", title: "Atribuição não aceita", message: error.message }); return; }
+      }
       const stamp = currentDateTime();
       setTickets((items) => items.map((item) => item.id === ticket.id ? { ...item, status: "Em processamento", assignmentStatus: "Aceito", firstResponseAt: item.firstResponseAt || stamp, history: [...(item.history || []), { status: "Em processamento", person: currentPerson.name, date: stamp, note: "Atribuição aceita pelo técnico." }] } : item));
-      if (hasSupabaseSession() && session.userId && /^[0-9a-f-]{36}$/i.test(org.id)) void restRpc("respond_to_ticket_assignment", { p_company_id: org.id, p_ticket_id: ticket.id, p_accept: true }).catch((error) => void captureAppError(error, org.id));
       logEvent(org.id, currentPerson.name, "Atribuição aceita", ticket.id, "success");
       notify({ tone: "success", message: `${ticket.id} está em atendimento.`, title: "Chamado aceito" });
       return;
@@ -349,7 +397,7 @@ function Workspace({ store, theme, toggleTheme }) {
           setTickets((items) => items.map((item) => item.id === ticket.id ? { ...item, status: "Em processamento", assignmentStatus: "Aceito" } : item));
           notify({ tone: "success", message: `${ticket.id} atribuído a você e aceito.`, title: "Chamado adquirido" });
         } else notify({ tone: "info", message: `${ticket.id} foi encaminhado a ${assigneeName} para aceite.`, title: "Atribuição automática" });
-      }).catch((error) => void captureAppError(error, org.id));
+      }).catch((error) => notify({ tone: "info", title: "Atribuição não concluída", message: error.message }));
       return;
     }
     const stamp = currentDateTime();
@@ -383,18 +431,21 @@ function Workspace({ store, theme, toggleTheme }) {
     if (!remoteAssignment) notify({ tone: "info", message: replacement ? `Chamado enviado a ${replacement.name}.` : "O chamado retornou à fila sem técnico disponível.", title: "Atribuição atualizada" });
   };
 
-  const submitSatisfaction = (ticketId, score, comment) => {
+  const submitSatisfaction = async (ticketId, score, comment) => {
     if (role === "TI") return;
     const ticket = tickets.find((item) => item.id === ticketId);
     if (!ticket || ticket.status !== "Resolvido" || ticket.requester !== currentPerson.name || ticket.satisfaction) return;
     const satisfaction = { score, comment: String(comment || "").trim(), person: currentPerson.name, date: currentDateTime() };
+    if (session.backend === "supabase") {
+      try { await restRpc("submit_ticket_satisfaction", { p_company_id: org.id, p_ticket_id: ticketId, p_score: score, p_comment: satisfaction.comment }); }
+      catch (error) { notify({ tone: "info", title: "Avaliação não registrada", message: error.message }); return; }
+    }
     setTickets((items) => items.map((item) => item.id === ticketId ? { ...item, satisfaction } : item));
-    if (hasSupabaseSession() && session.userId && /^[0-9a-f-]{36}$/i.test(org.id)) void restRpc("submit_ticket_satisfaction", { p_company_id: org.id, p_ticket_id: ticketId, p_score: score, p_comment: satisfaction.comment }).catch((error) => void captureAppError(error, org.id));
     void writeAuditEvent(org.id, session.userId, "ticket.satisfaction_submitted", "ticket", ticketId, { score });
     notify({ tone: "success", title: "Avaliação registrada", message: "Obrigado pelo feedback sobre o atendimento." });
   };
 
-  const changeTicketStatus = (ticket, status, note = "") => {
+  const changeTicketStatus = async (ticket, status, note = "") => {
     if (!can("claimTickets")) {
       notify({ tone: "info", message: "Somente Admin e TI podem alterar o andamento do chamado.", title: "Acesso restrito" });
       return;
@@ -416,6 +467,10 @@ function Workspace({ store, theme, toggleTheme }) {
       return;
     }
     if (ticket.status === status) return;
+    if (session.backend === "supabase") {
+      try { await restRpc("update_ticket_status_with_note", { p_company_id: org.id, p_ticket_id: ticket.id, p_status: status, p_note: String(note).trim() }); }
+      catch (error) { notify({ tone: "info", title: "Status não alterado", message: error.message }); return; }
+    }
     const stamp = currentDateTime();
     setTickets((items) => items.map((item) => (item.id === ticket.id ? {
       ...item,
@@ -425,7 +480,6 @@ function Workspace({ store, theme, toggleTheme }) {
       firstResponseAt: status === "Em processamento" ? (item.firstResponseAt || stamp) : item.firstResponseAt,
       history: [...(item.history || []), { status, person: currentPerson.name, date: stamp, note: String(note).trim() }],
     } : item)));
-    if (hasSupabaseSession() && session.userId && /^[0-9a-f-]{36}$/i.test(org.id)) void restRpc("update_ticket_status", { p_company_id: org.id, p_ticket_id: ticket.id, p_status: status }).catch((error) => void captureAppError(error, org.id));
     logEvent(org.id, currentPerson.name, "Status do chamado", `${ticket.id} → ${status}${note ? ` · ${note}` : ""}`, status === "Resolvido" ? "success" : "info");
     notify({
       tone: status === "Resolvido" ? "success" : "info",
@@ -474,7 +528,7 @@ function Workspace({ store, theme, toggleTheme }) {
     notify({ message: `${service.name} foi desativado; vínculos e valores históricos foram preservados.` });
   };
 
-  const linkServiceToTicket = (ticketId, serviceId) => {
+  const linkServiceToTicket = async (ticketId, serviceId) => {
     const ticket = tickets.find((item) => item.id === ticketId);
     const service = services.find((item) => item.id === serviceId);
     if (!ticket || !service) return;
@@ -484,6 +538,14 @@ function Workspace({ store, theme, toggleTheme }) {
     }
     if (ticket.status === "Resolvido") {
       notify({ tone: "info", message: "Chamados resolvidos não recebem novos serviços.", title: ticket.id });
+      return;
+    }
+    if (session.backend === "supabase") {
+      try {
+        const details = await restRpc("update_ticket_link", { p_company_id: org.id, p_ticket_id: ticketId, p_kind: "service", p_entity_id: serviceId, p_add: true });
+        setTickets((items) => items.map((item) => item.id === ticketId ? { ...item, serviceIds: details.serviceIds || [], servicePrices: details.servicePrices || {}, history: details.history || [] } : item));
+        notify({ tone: "success", title: "Serviço vinculado", message: `${service.name} aplicado ao chamado ${ticketId}.` });
+      } catch (error) { notify({ tone: "info", title: "Serviço não vinculado", message: error.message }); }
       return;
     }
     const stamp = currentDateTime();
@@ -497,9 +559,17 @@ function Workspace({ store, theme, toggleTheme }) {
     notify({ tone: "success", message: `${service.name} (${money(service.price)}) aplicado ao chamado ${ticketId}.`, title: "Serviço vinculado" });
   };
 
-  const unlinkServiceFromTicket = (ticket, serviceId) => {
+  const unlinkServiceFromTicket = async (ticket, serviceId) => {
     const service = services.find((item) => item.id === serviceId);
     if (!ticket || !service) return;
+    if (session.backend === "supabase") {
+      try {
+        const details = await restRpc("update_ticket_link", { p_company_id: org.id, p_ticket_id: ticket.id, p_kind: "service", p_entity_id: serviceId, p_add: false });
+        setTickets((items) => items.map((item) => item.id === ticket.id ? { ...item, serviceIds: details.serviceIds || [], servicePrices: details.servicePrices || {}, history: details.history || [] } : item));
+        notify({ title: "Serviço removido", message: `${service.name} removido do chamado ${ticket.id}.` });
+      } catch (error) { notify({ tone: "info", title: "Serviço não removido", message: error.message }); }
+      return;
+    }
     const stamp = currentDateTime();
     setTickets((items) => items.map((item) => (item.id === ticket.id ? {
       ...item,
@@ -515,11 +585,18 @@ function Workspace({ store, theme, toggleTheme }) {
     navigate("Notas fiscais");
   };
 
-  const addTicketComment = (ticketId, text, file) => {
+  const addTicketComment = async (ticketId, text, file) => {
     const clean = String(text || "").trim();
     if (!clean && !file) return;
     const stamp = currentDateTime();
     const attachment = file ? { name: file.name, type: file.type, size: file.size, data: file.data } : null;
+    if (session.backend === "supabase") {
+      try {
+        const details = await restRpc("append_ticket_comment", { p_company_id: org.id, p_ticket_id: ticketId, p_text: clean, p_attachment: attachment });
+        setTickets((items) => items.map((item) => item.id === ticketId ? { ...item, comments: details.comments || [], attachments: details.attachments || [], history: details.history || [] } : item));
+      } catch (error) { notify({ tone: "info", title: "Atualização não enviada", message: error.message }); }
+      return;
+    }
     setTickets((items) => items.map((item) => item.id === ticketId ? {
       ...item,
       comments: [...(item.comments || []), ...(clean ? [{ id: `COM-${Date.now()}`, text: clean, person: currentPerson.name, date: stamp }] : [])],
@@ -562,7 +639,7 @@ function Workspace({ store, theme, toggleTheme }) {
     setTickets((items) => items.map((item) => item.id === ticketId ? {
       ...item,
       invoiceIds: Array.from(new Set([...(item.invoiceIds || []), invoice.id])),
-      history: [...(item.history || []), { status: item.status, person: currentPerson.name, date: stamp, note: `Nota fiscal ${invoice.number}/${invoice.series} vinculada.` }],
+      history: [...(item.history || []), { status: item.status, person: currentPerson.name, date: stamp, note: `Documento ${invoice.number}/${invoice.series} vinculado.` }],
     } : item));
     logEvent(org.id, currentPerson.name, "Nota vinculada ao chamado", `${invoice.number}/${invoice.series} → ${ticketId}`, "info");
   };
@@ -570,12 +647,20 @@ function Workspace({ store, theme, toggleTheme }) {
   const clearLogs = () => {
     writeLogs(readLogs().filter((entry) => entry.orgId !== org.id));
     logEvent(org.id, currentPerson.name, "Logs limpos", "Histórico de auditoria apagado", "warning");
-    notify({ message: "Todos os logs desta empresa foram apagados." });
+    notify({ message: "O histórico local desta empresa foi limpo neste navegador." });
   };
 
   const adjustStock = (item, amount) => registerMovement(item, amount);
 
-  const issueInvoice = (outboundItems) => {
+  const issueInvoice = async (invoice) => {
+    if (session.backend === "supabase") {
+      const result = await restRpc("save_demo_document", { p_company_id: org.id, p_document: invoice });
+      const changed = new Map((result.inventory || []).map((item) => [item.id, item]));
+      if (changed.size) setInventory((items) => items.map((item) => changed.get(item.id) || item));
+      if (result.movements?.length) setData((candidate) => ({ ...candidate, movementLog: [...result.movements, ...(candidate.movementLog || [])] }));
+      return;
+    }
+    const outboundItems = invoice.status === "Emitida" ? invoice.items.filter((item) => item.inventoryId && item.quantity > 0) : [];
     for (const item of outboundItems) {
       const stockEntry = inventory.find((candidate) => candidate.id === item.inventoryId);
       if (!stockEntry) continue;
@@ -773,7 +858,7 @@ function Workspace({ store, theme, toggleTheme }) {
 
   const exportAccountingCsv = () => {
     const rows = [
-      ...invoices.filter((invoice) => invoice.status === "Emitida").map((invoice) => ({ sourceId: invoice.id, date: invoice.createdAt, type: "Receita", category: "Serviços", description: `Nota fiscal ${invoice.number}/${invoice.series}`, counterparty: invoice.customer?.name || "", amount: Number(invoice.total || 0), status: invoice.status })),
+      ...invoices.filter((invoice) => invoice.status === "Emitida").map((invoice) => ({ sourceId: invoice.id, date: invoice.createdAt, type: "Receita", category: "Serviços", description: `Documento demonstrativo ${invoice.number}/${invoice.series}`, counterparty: invoice.customer?.name || "", amount: Number(invoice.total || 0), status: invoice.status })),
       ...expenses.filter((expense) => expense.status !== "Rejeitada").map((expense) => ({ sourceId: expense.id, date: expense.date, type: "Despesa", category: expense.category, description: expense.title, counterparty: expense.requester, amount: -Math.abs(Number(expense.amount || 0)), status: expense.status })),
     ].sort((a, b) => String(a.date).localeCompare(String(b.date)));
     downloadCsv(rows, `gesti-contabilidade-${today()}`, ["Data", "Tipo", "Categoria", "Descrição", "Contraparte", "Valor", "Status"], (row) => [row.date, row.type, row.category, row.description, row.counterparty, row.amount.toFixed(2), row.status]);
@@ -794,19 +879,20 @@ function Workspace({ store, theme, toggleTheme }) {
   const pageIntro = {
     "Visão geral": ["Central de operações", "Acompanhe o que está acontecendo no setor de TI."],
     Chamados: ["Central de chamados", "Urgência classificada automaticamente, fila crítica e catálogo de serviços com valores aplicados aos chamados."],
-    Clientes: ["Cadastro de clientes", "Contatos e histórico de chamados e notas fiscais em um só lugar."],
-    Estoque: ["Estoque de TI", "Componentes, níveis mínimos e valor — tudo pronto para puxar para a nota fiscal."],
-    Registro: ["Registro geral", "Linha do tempo por data das notas fiscais e chamados, com o vínculo entre cada chamado e sua nota."],
+    Clientes: ["Cadastro de clientes", "Contatos e histórico de chamados e documentos em um só lugar."],
+    Estoque: ["Estoque de TI", "Componentes, níveis mínimos e valores para documentos demonstrativos."],
+    Registro: ["Registro geral", "Linha do tempo de documentos e chamados, com seus vínculos."],
     Custos: ["Métricas de gastos", "Gráficos e indicadores para controlar os custos de TI."],
-    "Notas fiscais": ["Emissão de nota fiscal", "Notas guardadas e seladas no livro fiscal — sem caixa 2 — com valor da peça puxado do estoque."],
-    Logs: ["Logs do sistema", "Auditoria completa das ações: quem fez, o quê e quando."],
+    "Notas fiscais": ["Documentos de demonstração", "Registros sem valor fiscal, com itens e valores do estoque."],
+    Logs: ["Eventos do sistema", "Histórico local das ações realizadas neste navegador."],
     Empresa: ["Empresa e equipe", "Mantenha os dados da organização e a hierarquia de acesso."],
     Sobre: ["Sobre o GesTI", "Gestão de tecnologia da informação com clareza e responsabilidade."],
   }[page];
 
+  if (!remoteReady) return <div className="boot-screen"><span className="brand-mark brand-mark-lg">G</span><span className="boot-hint">{remoteError || "Carregando dados da empresa…"}</span>{remoteError && <Button onClick={() => window.location.reload()}>Tentar novamente</Button>}</div>;
   return (
     <div className={`app-shell ${sideOpen ? "shell-expanded" : "shell-collapsed"}`} style={{ "--accent": company.primaryColor || "#2c666e", "--accent-strong": theme === "dark" ? "#90ddf0" : "#07393c", "--focus-ring": company.primaryColor || "#2c666e" }}>
-      <SideBar aberta={sideOpen} aoFechar={() => setSideOpen(false)} aoEntrar={enterSidebar} aoSair={leaveSidebar} aoNavegar={navigate} contagens={badgeCounts} onNotificacoes={() => setNotifyOpen((current) => !current)} onLogout={logout} empresaNome={company.name} paginaAtiva={page} paginas={pagesForRole} />
+      <SideBar aberta={sideOpen} aoFechar={() => setSideOpen(false)} aoEntrar={enterSidebar} aoSair={leaveSidebar} aoNavegar={navigate} contagens={badgeCounts} onNotificacoes={() => setNotifyOpen((current) => !current)} onLogout={logout} empresaNome={company.name} paginaAtiva={page} paginas={pagesForRole} backend={session.backend} />
       <AnimatePresence>
         {notifyOpen && (
           <motion.div animate={{ opacity: 1, x: 0, scale: 1 }} className="notif-panel" exit={{ opacity: 0, x: 24, scale: 0.97, transition: { duration: 0.16 } }} initial={{ opacity: 0, x: 24, scale: 0.97 }} transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}>
@@ -844,7 +930,7 @@ function Workspace({ store, theme, toggleTheme }) {
                 {page === "Estoque" && can("manageStock") && <Button onClick={() => setModal("inventory")}><Icon name="plus" size={17} /> Adicionar item</Button>}
                 {page === "Chamados" && can("manageServices") && <Button onClick={() => setModal("service")} variant="secondary"><Icon name="plus" size={17} /> Novo serviço</Button>}
                 {page === "Custos" && <Button onClick={() => setModal("expense")}><Icon name="plus" size={17} /> Nova despesa</Button>}
-                {page === "Notas fiscais" && <Button onClick={() => setInvoiceSignal((signal) => signal + 1)}><Icon name="file" size={17} /> Emitir nota</Button>}
+                {page === "Notas fiscais" && can("approve") && <Button onClick={() => setInvoiceSignal((signal) => signal + 1)}><Icon name="file" size={17} /> Criar documento de demonstração</Button>}
                 {page === "Visão geral" && can("viewCosts") && <Button onClick={() => setModal("report")} variant="secondary"><Icon name="file" size={16} /> Relatório mensal / PDF</Button>}
                 {page === "Empresa" && can("managePeople") && <Button onClick={() => setModal("person")}><Icon name="plus" size={17} /> Adicionar pessoa</Button>}
               </div></Reveal>
@@ -853,13 +939,13 @@ function Workspace({ store, theme, toggleTheme }) {
               {page === "Visão geral" && role !== "Funcionário" && <details className="overview-team"><summary>Desempenho da equipe e cumprimento de prazos</summary><Suspense fallback={<LoadingPanel />}><LazyTeamMetrics tickets={visibleTickets} /></Suspense></details>}
               {page === "Chamados" && <Suspense fallback={<LoadingPanel />}><LazyTicketsPage canClaim={can("claimTickets")} canManage={can("manageTickets")} canManageReplies={can("manageTickets")} canManageServices={can("manageServices")} canSetCategory={can("claimTickets")} canSetPriority={can("claimTickets")} currentPersonName={currentPerson.name} detail={ticketDetail} invoices={invoices} now={now} onAddComment={addTicketComment} onAddService={() => setModal("service")} onChangePriority={changeTicketPriority} onChangeStatus={changeTicketStatus} onClaim={claimTicket} onDeclineAssignment={declineAssignment} onDeleteReply={deleteReplyTemplate} onLinkService={linkServiceToTicket} onRemoveService={removeService} onSaveReply={saveReplyTemplate} onSurvey={submitSatisfaction} onToggleService={toggleService} onUnlinkService={unlinkServiceFromTicket} query={query} replyTemplates={org.replyTemplates || []} role={role} services={filteredServices} setDetail={setTicketDetail} setQuery={setQuery} tickets={filteredTickets} /></Suspense>}
               {page === "Chamados" && role !== "Funcionário" && <Suspense fallback={<LoadingPanel />}><LazyTeamMetrics tickets={visibleTickets} /></Suspense>}
-              {page === "Clientes" && <Suspense fallback={<LoadingPanel />}><LazyCustomersPage canManage={can("manageClients")} clients={clients} onAdd={() => { setClientEditing(null); setModal("client"); }} onEdit={(client) => { setClientEditing(client); setModal("client"); }} onOpenTickets={(name) => { setQuery(name); navigate("Chamados"); }} onToggle={toggleClient} query={query} setQuery={setQuery} /></Suspense>}
-              {page === "Estoque" && <Suspense fallback={<LoadingPanel />}><LazyInventoryPage canManage={can("manageStock")} inventory={role === "Funcionário" ? [] : filteredInventory} allInventory={role === "Funcionário" ? [] : inventory} movements={movements} onAdjust={adjustStock} onAddSupplier={addSupplier} onDownload={() => downloadCsv(filteredInventory, "gesti-relatorio-estoque")} onRemoveSupplier={removeSupplier} query={query} setQuery={setQuery} suppliers={org.suppliers || []} /></Suspense>}
+              {page === "Clientes" && <Suspense fallback={<LoadingPanel />}><LazyCustomersPage canManage={can("manageClients")} clients={clients} remoteAuth={session.backend === "supabase"} onAdd={() => { setClientEditing(null); setModal("client"); }} onEdit={(client) => { setClientEditing(client); setModal("client"); }} onOpenTickets={(name) => { setQuery(name); navigate("Chamados"); }} onToggle={toggleClient} query={query} setQuery={setQuery} /></Suspense>}
+              {page === "Estoque" && <Suspense fallback={<LoadingPanel />}><LazyInventoryPage canManage={can("manageStock")} inventory={role === "Funcionário" ? [] : filteredInventory} allInventory={role === "Funcionário" ? [] : inventory} movements={movements} onAdjust={adjustStock} onAddSupplier={addSupplier} onDownload={() => downloadCsv(filteredInventory, "gesti-relatorio-estoque", ["Código", "Componente", "Categoria", "SKU", "Quantidade", "Mínimo", "Custo unitário", "Garantia até"], (item) => [item.id, item.name, item.category, item.sku, item.quantity, item.minimum, item.unitCost, item.warrantyUntil || ""])} onRemoveSupplier={removeSupplier} query={query} setQuery={setQuery} suppliers={org.suppliers || []} /></Suspense>}
               {page === "Custos" && <Suspense fallback={<LoadingPanel />}><LazyExpensesPage budgets={org.budgets || []} canApprove={can("approve")} expenses={expenses} onSaveBudget={saveBudget} onStatus={setExpenseStatus} role={role} /></Suspense>}
-              {page === "Notas fiscais" && <Suspense fallback={<LoadingPanel />}><InvoicePage clients={clients} company={{ ...company, id: org.id, invoices }} currentPerson={currentPerson} focusInvoiceId={invoiceFocus} inventory={inventory} invoices={filteredInvoices} onIssueComplete={issueInvoice} onLinkTicketInvoice={linkTicketInvoice} onFocusHandled={() => setInvoiceFocus("")} openSignal={invoiceSignal} services={services} setInvoices={setInvoices} tickets={tickets} /></Suspense>}
+              {page === "Notas fiscais" && <Suspense fallback={<LoadingPanel />}><InvoicePage canIssue={can("approve")} clients={clients} company={{ ...company, id: org.id, invoices }} currentPerson={currentPerson} focusInvoiceId={invoiceFocus} inventory={inventory} invoices={filteredInvoices} onIssueComplete={issueInvoice} onLinkTicketInvoice={linkTicketInvoice} onFocusHandled={() => setInvoiceFocus("")} openSignal={invoiceSignal} services={services} setInvoices={setInvoices} tickets={tickets} /></Suspense>}
               {page === "Registro" && <Suspense fallback={<LoadingPanel />}><LazyRegistryPage invoices={invoices} onOpenInvoice={openRegistroInvoice} tickets={tickets} /></Suspense>}
               {page === "Logs" && <Suspense fallback={<LoadingPanel />}><LazyLogsPage canLog={can("clearLogs")} onClear={() => setModal("logs")} orgId={org.id} /></Suspense>}
-              {page === "Empresa" && <Suspense fallback={<LoadingPanel />}><LazyCompanyPage canManageCompany={can("manageCompany")} canManagePeople={can("managePeople")} company={company} currentPerson={currentPerson} onSave={saveCompany} onSaveBranding={saveBranding} onToggleAvailability={toggleAvailability} onUpdateCapabilities={updateCapabilities} people={people} removePerson={removeCompanyMember} resetPassword={handleResetPassword} role={role} /></Suspense>}
+              {page === "Empresa" && <Suspense fallback={<LoadingPanel />}><LazyCompanyPage canManageCompany={can("manageCompany")} canManagePeople={can("managePeople")} company={company} currentPerson={currentPerson} onSave={saveCompany} onSaveBranding={saveBranding} onToggleAvailability={toggleAvailability} onUpdateCapabilities={updateCapabilities} people={people} removePerson={removeCompanyMember} resetPassword={handleResetPassword} role={role} remoteAuth={session.backend === "supabase"} /></Suspense>}
               {page === "Sobre" && <Suspense fallback={<LoadingPanel />}><LazyAboutPage company={company} /></Suspense>}
             </motion.div>
           </AnimatePresence>

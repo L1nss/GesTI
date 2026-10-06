@@ -110,9 +110,17 @@ export function downloadJson(data, filename) {
   downloadFile(JSON.stringify(data, null, 2), `${filename}.json`, "application/json;charset=utf-8");
 }
 
+export function csvCell(value) {
+  const safe = typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : String(value ?? "").replace(/^[\s\uFEFF]*[=+@-]/, (match) => `'${match}`);
+  return `"${safe.replaceAll('"', '""')}"`;
+}
+
 export function downloadCsv(records, filename, headers, values) {
+  if (!Array.isArray(headers) || typeof values !== "function") throw new TypeError("A exportação CSV precisa de cabeçalhos e valores.");
   const rows = [headers, ...records.map(values)];
-  const csv = rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(";")).join("\n");
+  const csv = rows.map((row) => row.map(csvCell).join(";")).join("\n");
   /* BOM para o Excel reconhecer o ponto-e-vírgula e os acentos. */
   downloadFile(`\uFEFF${csv}`, `${filename}.csv`, "text/csv;charset=utf-8");
 }

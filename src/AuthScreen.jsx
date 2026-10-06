@@ -3,19 +3,20 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Button, Field, Icon } from "./shared.jsx";
 import { useToast } from "./toast.js";
 import { lookupCep, maskCep, maskDocument, maskPhone, validateEmail } from "./store.js";
-import { supabaseSignUp } from "./supabaseApi.js";
+import { supabaseCompleteRecovery, supabaseConsumeRecoveryLink, supabaseEnabled, supabaseSendPasswordReset, supabaseSignUp } from "./supabaseApi.js";
 
 const DEMO_ACCOUNTS = [
   { name: "Mariana Costa", role: "Dono da empresa", email: "mariana@acme.com.br" },
   { name: "Rafael Lima", role: "TI", email: "rafael@acme.com.br" },
   { name: "Pedro Alves", role: "Funcionário", email: "pedro@acme.com.br" },
 ];
+const recoveryFromLink = supabaseConsumeRecoveryLink();
 
 function BrandPanel() {
   const points = [
     { icon: "building", title: "Cada empresa com seu espaço", text: "Cadastro próprio, equipe e dados isolados." },
     { icon: "chart", title: "Custos sob controle", text: "Gráficos de gastos por mês e por categoria." },
-    { icon: "file", title: "Nota fiscal integrada", text: "Emissão e impressão direto pelo sistema." },
+    { icon: "file", title: "Documentos de demonstração", text: "Registros e impressão sem valor fiscal." },
   ];
   return (
     <div className="auth-brand">
@@ -45,6 +46,7 @@ function LoginForm({ store, onSwitch }) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -84,6 +86,16 @@ function LoginForm({ store, onSwitch }) {
           {busy ? <><Icon className="spin" name="spinner" size={17} /> Verificando acesso…</> : <><Icon name="arrow" size={16} /> Entrar no workspace</>}
         </Button>
       </form>
+      {supabaseEnabled && <button className="text-link" disabled={resetBusy} onClick={async () => {
+        if (!email.trim()) { setError("Informe seu e-mail para receber o link de recuperação."); return; }
+        setResetBusy(true);
+        try {
+          await supabaseSendPasswordReset(email.trim().toLowerCase());
+          notify({ tone: "success", title: "Recuperação solicitada", message: "Se a conta existir, o Supabase enviará um link para este e-mail." });
+          setError("");
+        } catch (cause) { setError(cause.message || "Não foi possível solicitar a recuperação."); }
+        finally { setResetBusy(false); }
+      }} type="button">{resetBusy ? "Solicitando recuperação…" : "Esqueci minha senha"}</button>}
       <div className="auth-switch"><span>Ainda não tem conta da sua empresa?</span><button onClick={onSwitch} type="button">Cadastrar empresa</button></div>
       <div className="demo-box">
         <strong>Conta demonstrativa da Acme Tecnologia</strong>
@@ -152,7 +164,7 @@ function RegisterForm({ store, onSwitch }) {
       return setError("Informe um CNPJ com 14 dígitos.");
     }
     if (admin.password !== admin.confirm) return setError("As senhas não coincidem.");
-    if (admin.password.length < 6) return setError("A senha deve ter pelo menos 6 caracteres.");
+    if (admin.password.length < 8) return setError("A senha deve ter pelo menos 8 caracteres.");
     if (!validateEmail(admin.email)) return setError("Informe um e-mail válido para acesso.");
     setBusy(true);
     const result = await new Promise((resolve) => window.setTimeout(() => resolve(store.registerCompany({ company, adminName: admin.name, adminEmail: admin.email, password: admin.password, adminRole: admin.role })), reduceMotion ? 0 : 450));
@@ -250,7 +262,7 @@ function InviteAcceptForm({ store, token, onBack }) {
   const [busy, setBusy] = useState(false);
   const submit = async (event) => {
     event.preventDefault(); setError(""); setMessage("");
-    if (!validateEmail(email) || password.length < 6 || name.trim().length < 2) return setError("Informe nome, e-mail válido e senha com pelo menos 6 caracteres.");
+    if (!validateEmail(email) || password.length < 8 || name.trim().length < 2) return setError("Informe nome, e-mail válido e senha com pelo menos 8 caracteres.");
     setBusy(true);
     const key = `tigest-pending-invite-${email.trim().toLowerCase()}`;
     try {
@@ -283,14 +295,18 @@ function InviteAcceptForm({ store, token, onBack }) {
 
 export default function AuthScreen({ store }) {
   const invitation = window.location.hash.match(/^#invite=([0-9a-f-]{36})$/i)?.[1] || "";
-  const [mode, setMode] = useState(() => invitation ? "invite" : "login");
+  const [mode, setMode] = useState(() => recoveryFromLink ? "recovery" : invitation ? "invite" : "login");
+  const [recoveryPassword, setRecoveryPassword] = useState("");
+  const [recoveryError, setRecoveryError] = useState("");
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
   return (
     <div className="auth-screen">
       <BrandPanel />
       <div className="auth-side">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div animate={{ opacity: 1, x: 0 }} exit={mode === "login" ? { opacity: 0, x: -18 } : { opacity: 0, x: 18 }} initial={{ opacity: 0, x: 18 }} key={mode} transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}>
-            {mode === "invite" && invitation ? <InviteAcceptForm onBack={() => setMode("login")} store={store} token={invitation} /> : mode === "login"
+            {mode === "recovery" ? <div className="auth-card"><h2>Definir nova senha</h2><p className="auth-subtitle">Use pelo menos 8 caracteres.</p><form className="auth-form" onSubmit={async (event) => { event.preventDefault(); setRecoveryBusy(true); setRecoveryError(""); try { await supabaseCompleteRecovery(recoveryPassword); setMode("login"); } catch (error) { setRecoveryError(error.message || "Não foi possível trocar a senha."); } finally { setRecoveryBusy(false); } }}><Field label="Nova senha"><input autoComplete="new-password" minLength={8} onChange={(event) => setRecoveryPassword(event.target.value)} required type="password" value={recoveryPassword} /></Field>{recoveryError && <p className="auth-error" role="alert">{recoveryError}</p>}<Button disabled={recoveryBusy} type="submit">{recoveryBusy ? "Salvando…" : "Salvar nova senha"}</Button></form></div>
+              : mode === "invite" && invitation ? <InviteAcceptForm onBack={() => setMode("login")} store={store} token={invitation} /> : mode === "login"
               ? <LoginForm onSwitch={() => setMode("register")} store={store} />
               : <RegisterForm onSwitch={() => setMode("login")} store={store} />}
           </motion.div>

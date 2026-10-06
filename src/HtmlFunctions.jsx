@@ -20,7 +20,7 @@ function NavIcon({ name }) {
 /* Sidebar dirigida por HOVER no desktop: encostar na borda esquerda (ou na
    própria sidebar) abre; retirar o mouse fecha. No mobile o comportamento
    continua por toque, com backdrop e botão de menu no topo. */
-export function SideBar({ aberta, aoFechar, aoEntrar, aoSair, paginaAtiva, aoNavegar, paginas, contagens, onNotificacoes, onLogout, empresaNome }) {
+export function SideBar({ aberta, aoFechar, aoEntrar, aoSair, paginaAtiva, aoNavegar, paginas, contagens, onNotificacoes, onLogout, empresaNome, backend }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const primaryPages = paginas.filter((page) => ["Visão geral", "Chamados", "Estoque", "Custos"].includes(page));
   const secondaryPages = paginas.filter((page) => !primaryPages.includes(page));
@@ -89,7 +89,7 @@ export function SideBar({ aberta, aoFechar, aoEntrar, aoSair, paginaAtiva, aoNav
             <span className="support-chevron"><Icon name="chevron" size={14} /></span>
           </button>
           <button className="logout-button sidebar-logout" onClick={onLogout} type="button"><Icon name="logout" size={15} /> Sair da conta</button>
-          <span className="sidebar-version">GesTI · Ambiente local</span>
+          <span className="sidebar-version">GesTI · {backend === "supabase" ? "Conta conectada" : "Demonstração local"}</span>
         </div>
       </aside>
     </>

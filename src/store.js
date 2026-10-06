@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSavedState } from "./hooks.js";
 import { SLA_BY_PRIORITY, today } from "./utils.js";
-import { hasSupabaseSession, restRpc, restSelect, restUpdate, supabaseEnabled, supabaseGetUser, supabaseSignIn, supabaseSignOut, supabaseSignUp, writeAuditEvent } from "./supabaseApi.js";
+import { hasSupabaseSession, restRpc, restSelect, restUpdate, supabaseEnabled, supabaseGetUser, supabaseSignIn, supabaseSignOut, supabaseSignUp, supabaseUpdatePassword, supabaseSendPasswordReset, writeAuditEvent } from "./supabaseApi.js";
 
 /* =====================================================================
    Backend local multi-empresa (baseado em localStorage).
@@ -16,6 +16,9 @@ const ORGS_KEY = "tigest-orgs-v1";
 const SESSION_KEY = "tigest-session-v2";
 const EVENTS_KEY = "tigest-events-v1";
 const LOGS_KEY = "tigest-logs-v1";
+const persistOrganizations = (items) => items.map((item) => /^[0-9a-f-]{36}$/i.test(item.id)
+  ? { id: item.id, company: { name: item.company?.name || "Empresa" }, people: [], tickets: [], clients: [], inventory: [], services: [], expenses: [], invoices: [], movementLog: [], suppliers: [], budgets: [], replyTemplates: [] }
+  : item);
 
 /* Sessão expira após 12 horas. */
 const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
@@ -446,13 +449,14 @@ function seedOrg() {
 /* ------------------------------- store ------------------------------- */
 
 export function useStore() {
-  const [orgs, setOrgs] = useSavedState(ORGS_KEY, []);
+  const [orgs, setOrgs] = useSavedState(ORGS_KEY, [], persistOrganizations);
   const [savedSession, setSession] = useSavedState(SESSION_KEY, null);
   const [seeded, setSeeded] = useState(false);
 
   /* Sessão expira: se passou do prazo máximo, o login é invalidado. */
   const session = useMemo(() => {
     if (!savedSession) return null;
+    if (savedSession.backend === "supabase" && !hasSupabaseSession()) return null;
     const age = Date.now() - Date.parse(savedSession.at || "");
     return Number.isFinite(age) && age > SESSION_MAX_AGE_MS ? null : savedSession;
   }, [savedSession]);
@@ -513,7 +517,7 @@ export function useStore() {
     let hasPendingInvite = false;
     try { hasPendingInvite = Boolean(window.localStorage.getItem(`tigest-pending-invite-${normalized}`)); } catch { /* remote auth still gets its usual attempt */ }
     let authenticated = null;
-    for (const candidate of (hasPendingInvite ? [] : orgs)) {
+    for (const candidate of (hasPendingInvite ? [] : orgs.filter((item) => !/^[0-9a-f-]{36}$/i.test(item.id)))) {
       const person = candidate.people.find((item) => String(item.login || item.email).toLowerCase() === normalized);
       if (person && await verifyPassword(password, person.passwordHash)) {
         authenticated = { candidate, person };
@@ -554,7 +558,13 @@ export function useStore() {
           tickets: [], inventory: [], services: [], expenses: [], invoices: [], movementLog: [], suppliers: [], budgets: [], replyTemplates: [],
           createdAt: remoteCompany.created_at,
         };
-        if (!existing) setOrgs((current) => [...current, remoteOrg]);
+        setOrgs((current) => existing ? current.map((item) => item.id === remoteCompany.id ? {
+          ...item,
+          company: { ...item.company, name: remoteCompany.name, ...(remoteCompany.profile_data || {}), ...(remoteCompany.branding || {}) },
+          people: item.people.some((person) => person.id === user.id)
+            ? item.people.map((person) => person.id === user.id ? { ...person, name: membership.display_name, role: membership.role, capabilities: membership.capabilities || {} } : person)
+            : [...item.people, { id: user.id, name: membership.display_name, email: user.email, role: membership.role, capabilities: membership.capabilities || {} }],
+        } : item) : [...current, remoteOrg]);
         if (invitedCompanyId) void writeAuditEvent(invitedCompanyId, user.id, "membership.invite_accepted", "membership", user.id, { role: membership.role });
         setSession({ orgId: remoteCompany.id, email: user.email, name: membership.display_name, role: membership.role, userId: user.id, at: new Date().toISOString(), backend: "supabase" });
         pushEvent(remoteCompany.id, `${membership.display_name} entrou no GesTI via Supabase`);
@@ -623,10 +633,9 @@ export function useStore() {
         const user = await supabaseGetUser();
         const orgId = await restRpc("bootstrap_company", { p_name: data.company.name, p_display_name: data.adminName });
         await restUpdate("companies", `id=eq.${orgId}`, { profile_data: data.company, branding: { primaryColor: data.company.primaryColor || "#2c666e", logoUrl: data.company.logoUrl || "" } });
-        const passwordHash = await hashPassword(data.password);
         const newOrg = {
-          id: orgId, company: { ...data.company }, admin: { name: data.adminName, email: data.adminEmail, passwordHash, role: data.adminRole || "Dono da empresa" },
-          people: [{ id: user.id, name: data.adminName, email: data.adminEmail, role: data.adminRole || "Dono da empresa", login: data.adminEmail, passwordHash, capabilities: {}, available: false }],
+          id: orgId, company: { ...data.company }, admin: { name: data.adminName, email: data.adminEmail, role: data.adminRole || "Dono da empresa" },
+          people: [{ id: user.id, name: data.adminName, email: data.adminEmail, role: data.adminRole || "Dono da empresa", capabilities: {}, available: false }],
           tickets: [], inventory: [], services: [], expenses: [], invoices: [], movementLog: [], suppliers: [], budgets: [], replyTemplates: [], createdAt: new Date().toISOString(),
         };
         setOrgs((current) => [...current, newOrg]);
@@ -701,10 +710,14 @@ export function useStore() {
   /* O usuário troca a própria senha (exigindo a atual) — antes não existia. */
   const changeOwnPassword = useCallback(async (currentPassword, newPassword) => {
     if (!session || !currentPerson) return { ok: false, error: "Sessão inválida." };
+    if (String(newPassword).length < 8) return { ok: false, error: "A nova senha deve ter pelo menos 8 caracteres." };
+    if (session.backend === "supabase") {
+      try { await supabaseUpdatePassword(session.email, currentPassword, newPassword); return { ok: true }; }
+      catch (error) { return { ok: false, error: error.message || "Não foi possível atualizar a senha no Supabase." }; }
+    }
     if (!(await verifyPassword(currentPassword, currentPerson.passwordHash))) {
       return { ok: false, error: "A senha atual não confere." };
     }
-    if (String(newPassword).length < 6) return { ok: false, error: "A nova senha deve ter pelo menos 6 caracteres." };
     const passwordHash = await hashPassword(newPassword);
     updateOrg(session.orgId, (candidate) => ({
       ...candidate,
@@ -717,14 +730,20 @@ export function useStore() {
   /* Admin/Dono reseta a senha de alguém para um valor provisório. */
   const resetPersonPassword = useCallback(async (personId, newPassword) => {
     if (!session) return { ok: false, error: "Sessão inválida." };
-    if (String(newPassword).length < 6) return { ok: false, error: "A senha deve ter pelo menos 6 caracteres." };
+    if (session.backend === "supabase") {
+      const person = org?.people.find((item) => item.id === personId);
+      if (!person?.email) return { ok: false, error: "O e-mail desta pessoa não está disponível. Peça que ela use a recuperação de senha na tela de acesso." };
+      try { await supabaseSendPasswordReset(person.email); return { ok: true, emailed: true }; }
+      catch (error) { return { ok: false, error: error.message || "Não foi possível enviar a recuperação." }; }
+    }
+    if (String(newPassword).length < 8) return { ok: false, error: "A senha deve ter pelo menos 8 caracteres." };
     const passwordHash = await hashPassword(newPassword);
     updateOrg(session.orgId, (candidate) => ({
       ...candidate,
       people: candidate.people.map((person) => (person.id === personId ? { ...person, passwordHash } : person)),
     }));
     return { ok: true };
-  }, [session, updateOrg]);
+  }, [session, org, updateOrg]);
 
   const resetWorkspace = useCallback(() => {
     try {

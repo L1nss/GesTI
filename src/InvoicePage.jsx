@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { logEvent, lookupCep, maskCep, maskDocument, maskPhone, sealInvoice, verifyLedger, validateCellphone, validateCnpj, validateCpf, validateEmail } from "./store.js";
 import { Badge, Button, CountUp, EmptyState, Field, Icon, Modal, Reveal } from "./shared.jsx";
 import { useToast } from "./toast.js";
-import { longDate, money, nextId, shortDate, today } from "./utils.js";
+import { downloadCsv as exportCsv, longDate, money, nextId, shortDate, today } from "./utils.js";
 
 const ISS_OPTIONS = [0, 2, 3, 5];
 
@@ -43,7 +43,7 @@ function nextInvoiceNumber(invoices, series) {
 
 /* ------------------------------ modal emissor ------------------------------ */
 
-function InvoiceBuilder({ company, currentPerson, inventory, services, tickets, clients = [], onClose, onCreate }) {
+function InvoiceBuilder({ company, currentPerson, inventory, services, tickets, clients = [], onClose, onCreate, issuing = false }) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
     customerName: "", customerDocument: "", customerEmail: "", customerAddress: "", customerPhone: "",
@@ -158,7 +158,7 @@ function InvoiceBuilder({ company, currentPerson, inventory, services, tickets, 
     }));
     const series = "1";
     const invoice = buildInvoice({ form, items: cleanedItems, company, issuer: currentPerson, invoiceNumber: nextInvoiceNumber(company.invoices, series), series });
-    onCreate(invoice);
+    void onCreate(invoice);
   };
 
   const steps = ["Cliente", "Serviços", "Revisão"];
@@ -203,8 +203,9 @@ function InvoiceBuilder({ company, currentPerson, inventory, services, tickets, 
   };
 
   return (
-    <Modal onClose={onClose} title="Emitir nota fiscal de serviço" wide>
+    <Modal onClose={onClose} title="Criar documento de demonstração" wide>
       <form className="invoice-form" onSubmit={submit}>
+        <p className="quiet-note">Este documento não é uma NFS-e autorizada pela prefeitura e não possui valor fiscal.</p>
         <div className="invoice-steps">
           {steps.map((label, index) => (
             <span className={index === step ? "step-on" : index < step ? "step-done" : ""} key={label}>
@@ -390,7 +391,7 @@ function InvoiceBuilder({ company, currentPerson, inventory, services, tickets, 
           <Button onClick={() => (step === 0 ? onClose() : setStep(step - 1))} variant="secondary">{step === 0 ? "Cancelar" : "Voltar"}</Button>
           {step < 2
             ? <Button disabled={!canAdvance} onClick={() => setStep(step + 1)} type="button">Continuar <Icon name="chevron" size={15} /></Button>
-            : <Button type="submit"><Icon name="check" size={16} /> Emitir nota fiscal</Button>}
+            : <Button disabled={issuing} type="submit"><Icon name="check" size={16} /> {issuing ? "Salvando…" : "Salvar documento de demonstração"}</Button>}
         </div>
       </form>
     </Modal>
@@ -409,14 +410,14 @@ export function InvoicePrintView({ company, invoice }) {
           <div><strong>{company.name}</strong><small>CNPJ {company.document}</small></div>
         </div>
         <div className="nf-id">
-          <span className="nf-badge">NOTA FISCAL DE SERVIÇO</span>
+          <span className="nf-badge">DOCUMENTO DE DEMONSTRAÇÃO · SEM VALOR FISCAL</span>
           <strong>Nº {invoice.number} · Série {invoice.series}</strong>
           <small>Emitida em {longDate(invoice.createdAt)}</small>
           <Badge tone={invoice.status === "Emitida" ? "green" : "amber"}>{invoice.status}</Badge>
         </div>
       </header>
       {seal && (
-        <div className="nf-seal"><Icon name="shield" size={14} /> Selada no livro fiscal · hash {String(seal.hash).slice(0, 12)}… · encadeada a {String(seal.previousHash).slice(0, 12)}…</div>
+        <div className="nf-seal"><Icon name="shield" size={14} /> Registro de demonstração · hash {String(seal.hash).slice(0, 12)}… · encadeado a {String(seal.previousHash).slice(0, 12)}…</div>
       )}
       <div className="nf-grid">
         <div className="nf-block"><span>PRESTADOR</span><strong>{company.name}</strong><p>{company.address}</p><p>{company.email}{company.phone ? ` · ${company.phone}` : ""}</p></div>
@@ -453,7 +454,7 @@ export function InvoicePrintView({ company, invoice }) {
   );
 }
 
-/* ------------------------- livro fiscal (anti caixa 2) ------------------------- */
+/* ------------------------- verificação local de integridade ------------------------- */
 
 function LedgerPanel({ invoices, canAudit, onSeal }) {
   const [busy, setBusy] = useState(false);
@@ -468,8 +469,8 @@ function LedgerPanel({ invoices, canAudit, onSeal }) {
       setBusy(false);
       const gapMessage = audit.sequenceGaps?.length ? `\n\nLacunas de numeração: ${audit.sequenceGaps.join(", ")}.` : "\n\nNenhuma lacuna de numeração detectada.";
       window.alert(audit.valid
-        ? `✅ Livro íntegro: ${audit.count} nota(s) conferida(s), nenhuma alteração detectada.${gapMessage}`
-        : `⚠️ Divergência detectada! ${audit.problems.length} nota(s) alterada(s) ou sem selo: ${audit.problems.join(", ")}.\n\nA cadeia de confiança foi quebrada — isso indica tentativa de alteração de notas já registradas (possível caixa 2).${gapMessage}`);
+        ? `✅ Verificação local: ${audit.count} documento(s) conferido(s), nenhuma divergência detectada.${gapMessage}`
+        : `⚠️ Divergência local detectada em ${audit.problems.length} documento(s): ${audit.problems.join(", ")}.${gapMessage}`);
     }, 450);
   };
 
@@ -478,34 +479,35 @@ function LedgerPanel({ invoices, canAudit, onSeal }) {
       <section className="ledger-panel">
         <div className="ledger-head">
           <div>
-            <span className="eyebrow">LIVRO FISCAL · CONTROLE ANTI CAIXA 2</span>
-            <h2>Todas as notas ficam guardadas e seladas</h2>
-            <p>Cada nota recebe um selo ligado ao selo da anterior. Alterar qualquer nota antiga quebra a cadeia e o sistema acusa a divergência — não dá para apagar nem esconder notas do livro.</p>
+            <span className="eyebrow">VERIFICAÇÃO LOCAL DE INTEGRIDADE</span>
+            <h2>Documentos de demonstração</h2>
+            <p>O selo ajuda a detectar alterações acidentais nos registros deste navegador. Ele não substitui uma trilha fiscal ou auditoria independente.</p>
           </div>
           <span className={`ledger-status ${audit.valid ? "ok" : invoices.length ? "broken" : "empty"}`}>
             <Icon name={audit.valid ? "shield" : invoices.length ? "warning" : "info"} size={16} />
-            {audit.valid ? "Cadeia íntegra" : invoices.length ? "Divergência detectada" : "Nenhuma nota selada"}
+            {audit.valid ? "Sem divergências locais" : invoices.length ? "Divergência detectada" : "Nenhum documento"}
           </span>
         </div>
         <div className="ledger-stats">
-          <div><span>Notas no livro</span><strong>{invoices.length}</strong></div>
-          <div><span>Faturamento registrado</span><strong>{money(totalLedger)}</strong></div>
+          <div><span>Documentos registrados</span><strong>{invoices.length}</strong></div>
+          <div><span>Total demonstrativo</span><strong>{money(totalLedger)}</strong></div>
           <div><span>Último selo da cadeia</span><strong className="ledger-hash">{lastSeal ? String(lastSeal.hash).slice(0, 16) : "—"}</strong></div>
           <div><span>Divergências</span><strong className={audit.problems.length ? "text-warning" : "text-positive"}>{audit.problems.length}</strong></div>
           <div><span>Lacunas na numeração</span><strong className={(audit.sequenceGaps || []).length ? "text-warning" : "text-positive"}>{(audit.sequenceGaps || []).length}</strong></div>
         </div>          <div className="ledger-actions">
           <Button disabled={busy || !invoices.length} onClick={runAudit} variant="secondary"><Icon name={busy ? "spinner" : "shield"} size={15} /> {busy ? "Conferindo…" : "Conferir integridade"}</Button>
-          {canAudit && invoices.some((invoice) => !invoice.seal) && <Button disabled={busy} onClick={onSeal}><Icon name="shield" size={15} /> Selar notas antigas</Button>}
+          {canAudit && invoices.some((invoice) => !invoice.seal) && <Button disabled={busy} onClick={onSeal}><Icon name="shield" size={15} /> Verificar registros antigos</Button>}
         </div>
       </section>
     </Reveal>
   );
 }
 
-export default function InvoicePage({ company, currentPerson, inventory = [], invoices, services = [], tickets = [], clients = [], setInvoices, onIssueComplete, onLinkTicketInvoice, openSignal = 0, focusInvoiceId = "", onFocusHandled }) {
+export default function InvoicePage({ company, currentPerson, inventory = [], invoices, services = [], tickets = [], clients = [], setInvoices, onIssueComplete, onLinkTicketInvoice, openSignal = 0, focusInvoiceId = "", onFocusHandled, canIssue = false }) {
   const notify = useToast();
   const canAudit = ["Admin", "Dono da empresa", "Gerência"].includes(currentPerson?.role);
   const [modal, setModal] = useState(false);
+  const [issuing, setIssuing] = useState(false);
   const [preview, setPreview] = useState(null);
   const [query, setQuery] = useState("");
   const [lastSignal, setLastSignal] = useState(openSignal);
@@ -529,14 +531,15 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
   const totalIssued = issued.reduce((sum, invoice) => sum + invoice.total, 0);
   const totalAll = invoices.reduce((sum, invoice) => sum + invoice.total, 0);
 
-  /* Registro no livro fiscal: a nota entra SELADA, encadeada à última.
-     Notas não podem ser apagadas nem editadas depois disso. */
-  const create = (invoice) => {
+  const create = async (invoice) => {
+    if (!canIssue || issuing) return;
+    setIssuing(true);
     const outbound = invoice.status === "Emitida" ? invoice.items.filter((item) => item.inventoryId && item.quantity > 0) : [];
-    if (outbound.length) onIssueComplete?.(outbound, invoice);
     const ordered = [...invoices].sort((a, b) => `${a.createdAt}#${a.id}`.localeCompare(`${b.createdAt}#${b.id}`));
     const previousSealed = ordered.length ? ordered[ordered.length - 1] : null;
     const sealed = { ...invoice, seal: sealInvoice(invoice, previousSealed) };
+    try { await onIssueComplete?.(sealed); }
+    catch (error) { notify({ tone: "info", title: "Documento não registrado", message: error.message || "Tente novamente." }); setIssuing(false); return; }
     setInvoices((current) => [sealed, ...current]);
     if (sealed.ticketId) onLinkTicketInvoice?.(sealed.ticketId, sealed);
     setModal(false);
@@ -544,11 +547,12 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
     notify({
       tone: "success",
       message: outbound.length
-        ? `Nota ${invoice.number}/${invoice.series} registrada e SELADA no livro fiscal · ${money(invoice.total)}. Estoque atualizado.`
-        : `Nota ${invoice.number}/${invoice.series} registrada e SELADA no livro fiscal · ${money(invoice.total)}.`,
-      title: "Nota fiscal emitida",
+        ? `Documento ${invoice.number}/${invoice.series} registrado · ${money(invoice.total)}. Estoque atualizado.`
+        : `Documento ${invoice.number}/${invoice.series} registrado · ${money(invoice.total)}.`,
+      title: "Documento registrado",
     });
-    logEvent(company.id, currentPerson.name, "Livro fiscal", `Nota ${invoice.number}/${invoice.series} selada (${money(invoice.total)})`, "success");
+    logEvent(company.id, currentPerson.name, "Documento demonstrativo", `Documento ${invoice.number}/${invoice.series} registrado (${money(invoice.total)})`, "success");
+    setIssuing(false);
   };
 
   /* Sela notas antigas que ficaram sem selo (ex.: criadas antes do livro). */
@@ -564,18 +568,12 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
       }
       return current.map((invoice) => sealedById.get(invoice.id) || invoice);
     });
-    notify({ tone: "info", message: "Notas antigas seladas e encadeadas ao livro fiscal." });
+    notify({ tone: "info", message: "Registros antigos vinculados à verificação local de integridade." });
   };
 
   const downloadCsv = () => {
-    const rows = [["Número", "Série", "Data", "Cliente", "CPF/CNPJ", "Celular", "E-mail", "Status", "Subtotal", "ISS", "Total", "Selo do livro"], ...invoices.map((invoice) => [invoice.number, invoice.series, invoice.createdAt, invoice.customer.name, invoice.customer.document, invoice.customer.phone || "", invoice.customer.email || "", invoice.status, invoice.subtotal, invoice.issValue, invoice.total, invoice.seal?.hash || "sem selo"])];
-    const csv = rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(";")).join("\n");
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
-    link.href = url;
-    link.download = "gesti-notas-fiscais.csv";
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    exportCsv(invoices, "gesti-notas-fiscais", ["Número", "Série", "Data", "Cliente", "CPF/CNPJ", "Celular", "E-mail", "Status", "Subtotal", "ISS", "Total", "Selo do livro"],
+      (invoice) => [invoice.number, invoice.series, invoice.createdAt, invoice.customer.name, invoice.customer.document, invoice.customer.phone || "", invoice.customer.email || "", invoice.status, invoice.subtotal, invoice.issValue, invoice.total, invoice.seal?.hash || "sem selo"]);
   };
 
   return (
@@ -595,10 +593,10 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
           <div className="toolbar">
             <label className="search-box">
               <Icon name="search" size={18} />
-              <input aria-label="Buscar nota fiscal" onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por número ou cliente" value={query} />
+              <input aria-label="Buscar documento" onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por número ou cliente" value={query} />
             </label>
             <Button className="button-secondary" onClick={downloadCsv} variant="secondary"><Icon name="download" size={16} /> Exportar CSV</Button>
-            <Button onClick={() => setModal(true)}><Icon name="plus" size={16} /> Emitir nova nota</Button>
+            {canIssue && <Button onClick={() => setModal(true)}><Icon name="plus" size={16} /> Criar documento</Button>}
           </div>
           {filtered.length ? (
             <div className="table-scroll">
@@ -625,11 +623,11 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
                 </tbody>
               </table>
             </div>
-          ) : <EmptyState note="Clique em “Emitir nova nota” para criar a primeira." title="Nenhuma nota fiscal" />}
+          ) : <EmptyState note={canIssue ? "Clique em “Criar documento” para registrar o primeiro." : "Nenhum documento disponível."} title="Nenhum documento" />}
         </section>
       </Reveal>
 
-      {modal && <InvoiceBuilder clients={clients} company={company} currentPerson={currentPerson} inventory={inventory} onClose={() => setModal(false)} onCreate={create} services={services} tickets={tickets} />}
+      {modal && <InvoiceBuilder clients={clients} company={company} currentPerson={currentPerson} inventory={inventory} issuing={issuing} onClose={() => setModal(false)} onCreate={create} services={services} tickets={tickets} />}
 
       {preview && (
         <Modal onClose={() => setPreview(null)} title={`Nota ${preview.number} · ${preview.customer.name}`} wide>

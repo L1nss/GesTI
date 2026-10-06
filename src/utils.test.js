@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { classifyTicketPriority, maskCep, maskDocument, maskPhone, sealInvoice, validateCellphone, validateCnpj, validateCpf, validateEmail, verifyLedger } from "../src/store.js";
-import { formatDateTime, money, nextId, PAGES, ROLE_PERMISSIONS, shortDate, slugify, SLA_BY_PRIORITY, today } from "../src/utils.js";
+import { csvCell, formatDateTime, money, nextId, PAGES, ROLE_PERMISSIONS, shortDate, slugify, SLA_BY_PRIORITY, today } from "../src/utils.js";
+
+describe("exportação CSV", () => {
+  it("impede fórmulas vindas de campos de texto e preserva valores numéricos", () => {
+    expect(csvCell("=HYPERLINK(\"https://example.invalid\")")).toBe("\"'=HYPERLINK(\"\"https://example.invalid\"\")\"");
+    expect(csvCell("  -SUM(A1:A2)")).toBe("\"'  -SUM(A1:A2)\"");
+    expect(csvCell(-125.5)).toBe("\"-125.5\"");
+  });
+});
 
 /* --------------------------- classificação de prioridade --------------------------- */
 

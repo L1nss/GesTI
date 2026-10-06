@@ -1,27 +1,53 @@
 const API_URL = String(import.meta.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
 const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
 const TOKEN_KEY = "tigest-supabase-access-token";
+const SESSION_KEY = "tigest-supabase-auth-session";
 
 export const supabaseEnabled = Boolean(API_URL && PUBLISHABLE_KEY);
 export const supabaseProjectUrl = API_URL;
 
 const storedToken = () => {
-  try { return window.localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
+  try { return JSON.parse(window.sessionStorage.getItem(SESSION_KEY) || "null")?.access_token || ""; } catch { return ""; }
 };
-const saveToken = (token) => {
+const savedSession = () => {
+  try { return JSON.parse(window.sessionStorage.getItem(SESSION_KEY) || "null"); } catch { return null; }
+};
+const saveSession = (session) => {
   try {
-    if (token) window.localStorage.setItem(TOKEN_KEY, token);
-    else window.localStorage.removeItem(TOKEN_KEY);
+    if (session?.access_token) window.sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token || savedSession()?.refresh_token || "",
+      expires_at: Date.now() + Number(session.expires_in || 3600) * 1000,
+    }));
+    else window.sessionStorage.removeItem(SESSION_KEY);
+    window.localStorage.removeItem(TOKEN_KEY);
   } catch { /* local auth remains available */ }
 };
 
-async function request(path, { method = "GET", body, token = storedToken(), headers = {} } = {}) {
+let refreshPromise;
+async function activeToken() {
+  const session = savedSession();
+  if (!session?.access_token) return "";
+  if (!session.expires_at || session.expires_at > Date.now() + 60_000) return session.access_token;
+  if (!session.refresh_token) { saveSession(null); return ""; }
+  if (!refreshPromise) {
+    refreshPromise = request("/auth/v1/token?grant_type=refresh_token", {
+      method: "POST", token: PUBLISHABLE_KEY, body: { refresh_token: session.refresh_token },
+    }).then((next) => { saveSession(next); return next.access_token; })
+      .catch((error) => { saveSession(null); throw error; })
+      .finally(() => { refreshPromise = null; });
+  }
+  return refreshPromise;
+}
+
+async function request(path, { method = "GET", body, token, headers = {} } = {}) {
   if (!supabaseEnabled) throw new Error("A conexão Supabase não está configurada.");
+  const bearer = token === undefined ? await activeToken() : token;
   const response = await fetch(`${API_URL}${path}`, {
     method,
     headers: {
       apikey: PUBLISHABLE_KEY,
-      Authorization: `Bearer ${token || PUBLISHABLE_KEY}`,
+      Authorization: `Bearer ${bearer || PUBLISHABLE_KEY}`,
       ...(body === undefined ? {} : { "Content-Type": "application/json", Prefer: "return=representation" }),
       ...headers,
     },
@@ -36,18 +62,43 @@ async function request(path, { method = "GET", body, token = storedToken(), head
 
 export async function supabaseSignIn(email, password) {
   const session = await request("/auth/v1/token?grant_type=password", { method: "POST", token: PUBLISHABLE_KEY, body: { email, password } });
-  saveToken(session.access_token);
+  saveSession(session);
   return session;
 }
 
 export async function supabaseSignUp(email, password, displayName) {
   const result = await request("/auth/v1/signup", { method: "POST", token: PUBLISHABLE_KEY, body: { email, password, data: { display_name: displayName } } });
-  if (result.access_token) saveToken(result.access_token);
+  if (result.access_token) saveSession(result);
   return result;
 }
 
 export async function supabaseSignOut() {
-  try { if (storedToken()) await request("/auth/v1/logout", { method: "POST" }); } finally { saveToken(""); }
+  try { if (storedToken()) await request("/auth/v1/logout", { method: "POST" }); } finally { saveSession(null); }
+}
+export async function supabaseUpdatePassword(email, currentPassword, newPassword) {
+  await request("/auth/v1/token?grant_type=password", { method: "POST", token: PUBLISHABLE_KEY, body: { email, password: currentPassword } });
+  await request("/auth/v1/user", { method: "PUT", body: { password: newPassword } });
+}
+export async function supabaseSendPasswordReset(email) {
+  const redirect = encodeURIComponent(`${window.location.origin}${window.location.pathname}`);
+  await request(`/auth/v1/recover?redirect_to=${redirect}`, { method: "POST", token: PUBLISHABLE_KEY, body: { email } });
+}
+export function supabaseConsumeRecoveryLink() {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  if (params.get("type") !== "recovery" || !params.get("access_token")) return false;
+  saveSession({
+    access_token: params.get("access_token"),
+    refresh_token: params.get("refresh_token"),
+    expires_in: Number(params.get("expires_in") || 3600),
+  });
+  try { window.localStorage.removeItem("tigest-session-v2"); } catch { /* armazenamento indisponível */ }
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  return true;
+}
+export async function supabaseCompleteRecovery(newPassword) {
+  if (!hasSupabaseSession()) throw new Error("O link de recuperação expirou. Solicite outro.");
+  await request("/auth/v1/user", { method: "PUT", body: { password: newPassword } });
+  saveSession(null);
 }
 export async function supabaseGetUser() {
   return request("/auth/v1/user");
@@ -72,7 +123,7 @@ export async function restRpc(name, args) {
 }
 
 export async function askWorkspaceAssistant(companyId, messages) {
-  const token = storedToken();
+  const token = await activeToken();
   if (!supabaseEnabled || !token) throw new Error("Entre em uma empresa conectada ao Supabase para usar o assistente.");
   const response = await fetch(`${API_URL}/functions/v1/tigest-assistant`, {
     method: "POST",
@@ -107,4 +158,4 @@ export async function writeAuditEvent(companyId, actorUserId, action, entityType
   } catch { /* legacy/local audit remains the fallback */ }
 }
 
-export function hasSupabaseSession() { return Boolean(storedToken()); }
+export function hasSupabaseSession() { return Boolean(savedSession()?.access_token); }

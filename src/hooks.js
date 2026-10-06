@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
    ===================================================================== */
 
 export const STORAGE_ERROR_EVENT = "tigest:storage-error";
+const identity = (current) => current;
 
 function readSavedValue(key, initialValue) {
   try {
@@ -20,7 +21,7 @@ function readSavedValue(key, initialValue) {
    não serializar tudo a cada tecla; se a quota estourar, um evento é
    disparado para o ToastProvider avisar o usuário (antes o erro era
    engolido e o usuário achava que tinha salvado). */
-export function useSavedState(key, initialValue) {
+export function useSavedState(key, initialValue, serialize = identity) {
   const [value, setValue] = useState(() => readSavedValue(key, initialValue));
   const latest = useRef(value);
   latest.current = value;
@@ -28,22 +29,22 @@ export function useSavedState(key, initialValue) {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
-        window.localStorage.setItem(key, JSON.stringify(value));
+        window.localStorage.setItem(key, JSON.stringify(serialize(value)));
       } catch {
         window.dispatchEvent(new CustomEvent(STORAGE_ERROR_EVENT, { detail: { key } }));
       }
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [key, value]);
+  }, [key, value, serialize]);
 
   /* Garante que a última alteração chega ao disco mesmo fechando rápido. */
   useEffect(() => () => {
     try {
-      window.localStorage.setItem(key, JSON.stringify(latest.current));
+      window.localStorage.setItem(key, JSON.stringify(serialize(latest.current)));
     } catch {
       // Sem armazenamento: segue o fluxo.
     }
-  }, [key]);
+  }, [key, serialize]);
 
   const update = useCallback((next) => {
     setValue((current) => (typeof next === "function" ? next(current) : next));
