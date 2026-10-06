@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Button, Field, Icon } from "./shared.jsx";
+import GuestMascot from "./GuestMascot.jsx";
 import { useToast } from "./toast.js";
 import { lookupCep, maskCep, maskDocument, maskPhone, validateEmail } from "./store.js";
 import { supabaseCompleteRecovery, supabaseConsumeRecoveryLink, supabaseEnabled, supabaseSendPasswordReset, supabaseSignUp } from "./supabaseApi.js";
@@ -12,38 +13,18 @@ const DEMO_ACCOUNTS = [
 ];
 const recoveryFromLink = supabaseConsumeRecoveryLink();
 
-function GesTIMascot({ active }) {
-  return (
-    <div aria-label="Tico, mascote do GesTI" className={`auth-mascot${active ? " is-active" : ""}`} role="img">
-      <svg aria-hidden="true" fill="none" viewBox="0 0 220 210">
-        <ellipse cx="111" cy="190" fill="#021f20" opacity=".32" rx="58" ry="10" />
-        <path d="M109 31V20" stroke="#b4eff0" strokeLinecap="round" strokeWidth="5" />
-        <circle className="mascot-signal" cx="109" cy="15" r="8" fill="#90DDF0" />
-        <path d="M56 79c-13-3-20 5-20 17 0 11 7 18 20 16m106-33c13-3 20 5 20 17 0 11-7 18-20 16" fill="#41a5a5" stroke="#b4eff0" strokeWidth="5" />
-        <rect x="53" y="39" width="112" height="102" rx="34" fill="#91dada" />
-        <rect x="64" y="52" width="90" height="75" rx="26" fill="#07393c" />
-        <g className="mascot-eyes" fill="#d8ffff">
-          <ellipse cx="91" cy="84" rx="7" ry="9" />
-          <ellipse cx="127" cy="84" rx="7" ry="9" />
-        </g>
-        <path d="M96 105c7 7 19 7 26 0" stroke="#90DDF0" strokeLinecap="round" strokeWidth="4" />
-        <path d="M79 143v18m59-18v18" stroke="#91dada" strokeLinecap="round" strokeWidth="11" />
-        <path d="M69 166c0-7 6-13 13-13h55c7 0 13 6 13 13v5c0 8-6 14-14 14H83c-8 0-14-6-14-14v-5Z" fill="#2c666e" />
-        <path d="m100 143 9 12 10-12" stroke="#d8ffff" strokeLinejoin="round" strokeWidth="3" />
-      </svg>
-      <span>Tico</span>
-    </div>
-  );
-}
-
-function BrandPanel({ typing = false }) {
+function BrandPanel({ mascotMode = "idle", emailGaze = 0 }) {
   return (
     <aside aria-label="GesTI" className="auth-brand">
+      <svg aria-hidden="true" className="auth-brand-divider" preserveAspectRatio="none" viewBox="0 0 100 1000">
+        <path d="M100 0C52 160 16 335 16 500s36 340 84 500V0Z" fill="var(--paper)" />
+        <path d="M100 0C52 160 16 335 16 500s36 340 84 500" fill="none" stroke="#07393c" strokeWidth="1.4" />
+      </svg>
       <div className="auth-brand-inner">
         <div className="auth-brand-lockup"><span className="brand-mark brand-mark-lg">G</span><strong>GesTI</strong></div>
         <div className="auth-brand-main">
           <div className="auth-brand-copy"><h1>Sua operação<br />de TI.</h1><p>Acompanhe chamados, peças, custos e documentos da equipe.</p></div>
-          <GesTIMascot active={typing} />
+          <GuestMascot className="auth-mascot" gaze={emailGaze} mode={mascotMode} />
         </div>
         <div className="auth-brand-bottom"><span>Chamados <i /> Estoque <i /> Custos <i /> Documentos</span><p>Acesso da equipe da sua organização.</p></div>
       </div>
@@ -51,7 +32,7 @@ function BrandPanel({ typing = false }) {
   );
 }
 
-function LoginForm({ store, onSwitch, onTypingChange }) {
+function LoginForm({ store, onSwitch, onMascotModeChange, onEmailGazeChange }) {
   const notify = useToast();
   const reduceMotion = useReducedMotion();
   const [email, setEmail] = useState("");
@@ -68,12 +49,17 @@ function LoginForm({ store, onSwitch, onTypingChange }) {
   const handleTyping = (field, setValue) => (event) => {
     setValue(event.target.value);
     setTypingField(field);
-    onTypingChange(true);
     window.clearTimeout(typingTimer.current);
     typingTimer.current = window.setTimeout(() => {
       setTypingField("");
-      onTypingChange(false);
     }, 220);
+  };
+
+  const handleEmailTyping = (event) => {
+    handleTyping("email", setEmail)(event);
+    const value = event.currentTarget.value;
+    const cursor = event.currentTarget.selectionStart ?? value.length;
+    onEmailGazeChange(value ? ((cursor / Math.max(value.length, 1)) * 2) - 1 : 0);
   };
 
   const submit = async (event) => {
@@ -101,11 +87,11 @@ function LoginForm({ store, onSwitch, onTypingChange }) {
       <p className="auth-subtitle">Entre com o e-mail e a senha da sua conta.</p>
       <form className="auth-form" onSubmit={submit}>
         <Field className={typingField === "email" ? "is-typing" : ""} label="E-mail corporativo">
-          <input autoComplete="username" name="email" onChange={handleTyping("email", setEmail)} placeholder="voce@empresa.com.br" required type="email" value={email} />
+          <input autoComplete="username" name="email" onBlur={() => { onMascotModeChange("idle"); onEmailGazeChange(0); }} onChange={handleEmailTyping} onFocus={() => onMascotModeChange("email")} placeholder="voce@empresa.com.br" required type="email" value={email} />
         </Field>
         <Field className={typingField === "password" ? "is-typing" : ""} label="Senha">
           <div className="password-wrap">
-            <input autoComplete="current-password" name="password" onChange={handleTyping("password", setPassword)} placeholder="••••••••" required type={showPassword ? "text" : "password"} value={password} />
+            <input autoComplete="current-password" name="password" onBlur={() => onMascotModeChange("idle")} onChange={handleTyping("password", setPassword)} onFocus={() => onMascotModeChange("password")} placeholder="••••••••" required type={showPassword ? "text" : "password"} value={password} />
             <button aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} className="password-eye" onClick={() => setShowPassword((current) => !current)} type="button"><Icon name={showPassword ? "eyeOff" : "eye"} size={16} /></button>
           </div>
         </Field>
@@ -320,17 +306,18 @@ export default function AuthScreen({ store }) {
   const [recoveryPassword, setRecoveryPassword] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
   const [recoveryBusy, setRecoveryBusy] = useState(false);
-  const [typing, setTyping] = useState(false);
+  const [mascotMode, setMascotMode] = useState("idle");
+  const [emailGaze, setEmailGaze] = useState(0);
   return (
     <div className="auth-screen">
-      <BrandPanel typing={typing} />
+      <BrandPanel emailGaze={emailGaze} mascotMode={mascotMode} />
       <div className="auth-side">
-        <div className="auth-mobile-brand"><span className="brand-mark">G</span><strong>GesTI</strong></div>
+        <div className="auth-mobile-brand"><span className="brand-mark">G</span><strong>GesTI</strong><GuestMascot className="auth-mobile-guest" gaze={emailGaze} mode={mascotMode} /></div>
         <AnimatePresence mode="wait" initial={false}>
           <motion.div animate={{ opacity: 1 }} exit={{ opacity: 0 }} initial={{ opacity: 0 }} key={mode} transition={{ duration: 0.16 }}>
             {mode === "recovery" ? <div className="auth-card"><h2>Definir nova senha</h2><p className="auth-subtitle">Use pelo menos 8 caracteres.</p><form className="auth-form" onSubmit={async (event) => { event.preventDefault(); setRecoveryBusy(true); setRecoveryError(""); try { await supabaseCompleteRecovery(recoveryPassword); setMode("login"); } catch (error) { setRecoveryError(error.message || "Não foi possível trocar a senha."); } finally { setRecoveryBusy(false); } }}><Field label="Nova senha"><input autoComplete="new-password" minLength={8} onChange={(event) => setRecoveryPassword(event.target.value)} required type="password" value={recoveryPassword} /></Field>{recoveryError && <p className="auth-error" role="alert">{recoveryError}</p>}<Button disabled={recoveryBusy} type="submit">{recoveryBusy ? "Salvando…" : "Salvar nova senha"}</Button></form></div>
               : mode === "invite" && invitation ? <InviteAcceptForm onBack={() => setMode("login")} store={store} token={invitation} /> : mode === "login"
-              ? <LoginForm onSwitch={() => { setTyping(false); setMode("register"); }} onTypingChange={setTyping} store={store} />
+              ? <LoginForm onSwitch={() => { setMascotMode("idle"); setMode("register"); }} onEmailGazeChange={setEmailGaze} onMascotModeChange={setMascotMode} store={store} />
               : <RegisterForm onSwitch={() => setMode("login")} store={store} />}
           </motion.div>
         </AnimatePresence>

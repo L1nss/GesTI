@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import GuestMascot from "./GuestMascot.jsx";
 import { logEvent, lookupCep, maskCep, maskDocument, maskPhone, sealInvoice, verifyLedger, validateCellphone, validateCnpj, validateCpf, validateEmail } from "./store.js";
 import { Badge, Button, CountUp, EmptyState, Field, Icon, Modal, Reveal } from "./shared.jsx";
 import { useToast } from "./toast.js";
@@ -522,6 +523,7 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
   const [preview, setPreview] = useState(null);
   const [query, setQuery] = useState("");
   const [lastSignal, setLastSignal] = useState(openSignal);
+  const [ejectingInvoiceId, setEjectingInvoiceId] = useState("");
 
   /* Sinal de abertura consumido durante o render (padrão recomendado pelo
      React): substitui o setState-dentro-de-effect apontado pelo lint. */
@@ -529,6 +531,12 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
     setLastSignal(openSignal);
     if (openSignal > 0) setModal(true);
   }
+
+  useEffect(() => {
+    if (!ejectingInvoiceId) return undefined;
+    const timer = window.setTimeout(() => setEjectingInvoiceId(""), 1500);
+    return () => window.clearTimeout(timer);
+  }, [ejectingInvoiceId]);
 
   useEffect(() => {
     if (!focusInvoiceId) return;
@@ -555,6 +563,7 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
     if (sealed.ticketId) onLinkTicketInvoice?.(sealed.ticketId, sealed);
     setModal(false);
     setPreview(sealed);
+    setEjectingInvoiceId(sealed.status === "Emitida" ? sealed.id : "");
     notify({
       tone: "success",
       message: outbound.length
@@ -642,6 +651,7 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
 
       {preview && (
         <Modal onClose={() => setPreview(null)} title={`Nota ${preview.number} · ${preview.customer.name}`} wide>
+          {ejectingInvoiceId === preview.id && <div aria-live="polite" className="invoice-guest-celebration" role="status"><GuestMascot className="invoice-guest" mode="eject" /><span>Guest acabou de emitir a nota {preview.number}.</span></div>}
           <div className="nf-actions">
             <Button onClick={() => window.print()} variant="secondary"><Icon name="print" size={15} /> Imprimir / PDF</Button>
             <Button onClick={() => setPreview(null)} variant="secondary">Fechar</Button>
