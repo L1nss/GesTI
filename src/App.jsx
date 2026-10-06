@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { SideBar } from "./HtmlFunctions.jsx";
 import AuthScreen from "./AuthScreen.jsx";
@@ -80,6 +80,8 @@ function Workspace({ store, theme, toggleTheme }) {
   const [tourStep, setTourStep] = useState(() => org.onboardingComplete ? null : 0);
   const [remoteReady, setRemoteReady] = useState(() => !hasSupabaseSession() || !/^[0-9a-f-]{36}$/i.test(org.id));
   const [remoteError, setRemoteError] = useState("");
+  const remoteRecordsRef = useRef({ companyId: "", records: new Map() });
+  const remoteWriteQueueRef = useRef(Promise.resolve());
 
   useEffect(() => {
     document.body.classList.toggle("report-printing", modal === "report");
@@ -132,6 +134,7 @@ function Workspace({ store, theme, toggleTheme }) {
       });
       const grouped = new Map(["clients", "inventory", "services", "expenses", "invoices", "movements"].map((type) => [type, []]));
       for (const row of records) grouped.get(row.entity_type)?.push(row.payload);
+      remoteRecordsRef.current = { companyId: org.id, records: new Map(records.map((row) => [`${row.entity_type}:${row.entity_id}`, JSON.stringify(row.payload)])) };
       const remoteCompany = companyRows[0];
       if (!remoteCompany || !remoteMembers.some((member) => member.user_id === session.userId)) {
         notify({ tone: "info", title: "Acesso encerrado", message: "Sua associação com esta empresa não está mais ativa." });
@@ -146,15 +149,47 @@ function Workspace({ store, theme, toggleTheme }) {
   }, [org.id, session.userId, session.email, session.name, setData, logout, notify]);
 
   useEffect(() => {
-    if (!remoteReady || !hasSupabaseSession() || !session.userId || !/^[0-9a-f-]{36}$/i.test(org.id)) return;
-    const rows = [
+    if (!remoteReady || !hasSupabaseSession() || !session.userId || remoteRecordsRef.current.companyId !== org.id) return;
+    const writable = {
+      clients: permissions.manageClients === true,
+      inventory: permissions.manageStock === true,
+      services: permissions.manageServices === true,
+      expenses: permissions.approve === true && permissions.viewCosts === true,
+      movements: permissions.manageStock === true,
+    };
+    const snapshot = [
       ["clients", org.clients || []], ["inventory", org.inventory || []], ["services", org.services || []],
       ["expenses", org.expenses || []], ["movements", org.movementLog || []],
-    ].filter(([entity_type]) => ({ clients: permissions.manageClients === true, inventory: permissions.manageStock === true, services: permissions.manageServices === true, expenses: permissions.approve === true, movements: permissions.manageStock === true })[entity_type]).flatMap(([entity_type, items]) => items.filter((item) => item?.id).map((payload) => ({ company_id: org.id, entity_type, entity_id: String(payload.id), payload, updated_by: session.userId })));
-    if (!rows.length) return undefined;
-    const timer = window.setTimeout(() => { void restInsert("workspace_records", rows, { upsert: true, onConflict: "company_id,entity_type,entity_id", returnRepresentation: false }).catch((error) => void captureAppError(error, org.id)); }, 350);
+    ].filter(([type]) => writable[type]).flatMap(([type, items]) => items.filter((item) => item?.id).map((payload) => ({ company_id: org.id, entity_type: type, entity_id: String(payload.id), payload, updated_by: session.userId })));
+    const timer = window.setTimeout(() => {
+      remoteWriteQueueRef.current = remoteWriteQueueRef.current.catch(() => {}).then(async () => {
+        const baseline = remoteRecordsRef.current;
+        if (baseline.companyId !== org.id) return;
+        const current = new Map(snapshot.map((row) => [`${row.entity_type}:${row.entity_id}`, JSON.stringify(row.payload)]));
+        const changed = snapshot.filter((row) => baseline.records.get(`${row.entity_type}:${row.entity_id}`) !== current.get(`${row.entity_type}:${row.entity_id}`));
+        const removed = [...baseline.records.keys()].filter((key) => writable[key.split(":", 1)[0]] && !current.has(key));
+        if (changed.length) {
+          await restInsert("workspace_records", changed, { upsert: true, onConflict: "company_id,entity_type,entity_id", returnRepresentation: false });
+          for (const row of changed) baseline.records.set(`${row.entity_type}:${row.entity_id}`, current.get(`${row.entity_type}:${row.entity_id}`));
+        }
+        for (const key of removed) {
+          const divider = key.indexOf(":");
+          await restDelete("workspace_records", `company_id=eq.${org.id}&entity_type=eq.${key.slice(0, divider)}&entity_id=eq.${encodeURIComponent(key.slice(divider + 1))}`);
+          baseline.records.delete(key);
+        }
+      }).catch((error) => {
+        notify({ tone: "info", title: "Alterações não sincronizadas", message: `${error.message || "Verifique a conexão."} Recarregue para conferir os dados salvos.` });
+        void captureAppError(error, org.id);
+      });
+    }, 350);
     return () => window.clearTimeout(timer);
-  }, [remoteReady, org, org.id, session.userId, permissions]);
+  }, [remoteReady, org, org.id, session.userId, permissions, notify]);
+
+  const persistWorkspaceRow = async (type, payload) => {
+    if (session.backend !== "supabase") return;
+    await restInsert("workspace_records", { company_id: org.id, entity_type: type, entity_id: String(payload.id), payload, updated_by: session.userId }, { upsert: true, onConflict: "company_id,entity_type,entity_id", returnRepresentation: false });
+    if (remoteRecordsRef.current.companyId === org.id) remoteRecordsRef.current.records.set(`${type}:${payload.id}`, JSON.stringify(payload));
+  };
 
   const company = org.company;
   const people = org.people;
@@ -307,7 +342,7 @@ function Workspace({ store, theme, toggleTheme }) {
     notify({ tone: remoteTicket ? "info" : "success", message: remoteTicket ? `Enviando ${ticket.id} ao servidor…` : `Chamado ${ticket.id} aberto${assignedTechnician ? ` · enviado a ${assignedTechnician.name} para aceite` : " · aguardando técnico disponível"}.`, title: remoteTicket ? "Registro em andamento" : "Chamado registrado" });
   };
 
-  const addClient = (event) => {
+  const addClient = async (event) => {
     event.preventDefault();
     if (!can("manageClients")) return;
     const data = new FormData(event.currentTarget);
@@ -318,13 +353,18 @@ function Workspace({ store, theme, toggleTheme }) {
     const duplicate = storedClients.find((client) => client.id !== clientEditing?.id && ((documentValue && String(client.document || "").replace(/\D/g, "") === documentValue.replace(/\D/g, "")) || (email && String(client.email || "").toLowerCase() === email) || client.name.toLowerCase() === name.toLowerCase()));
     if (duplicate) { notify({ tone: "info", title: "Cliente já cadastrado", message: `${duplicate.name} já consta no cadastro.` }); return; }
     if (clientEditing) {
-      setData((current) => ({ ...current, clients: (current.clients || []).map((client) => client.id === clientEditing.id ? { ...client, document: documentValue, email, phone: String(data.get("phone") || "").trim(), company: String(data.get("company") || "").trim(), notes: String(data.get("notes") || "").trim(), updatedAt: currentDateTime() } : client) }));
+      const updated = { ...clientEditing, document: documentValue, email, phone: String(data.get("phone") || "").trim(), company: String(data.get("company") || "").trim(), notes: String(data.get("notes") || "").trim(), updatedAt: currentDateTime() };
+      try { await persistWorkspaceRow("clients", updated); }
+      catch (error) { notify({ tone: "info", title: "Cliente não atualizado", message: error.message }); return; }
+      setData((current) => ({ ...current, clients: (current.clients || []).map((client) => client.id === clientEditing.id ? updated : client) }));
       logEvent(org.id, currentPerson.name, "Cadastro de cliente atualizado", clientEditing.name, "info");
       setClientEditing(null); setModal("");
       notify({ tone: "success", title: "Cadastro atualizado", message: `${name} foi atualizado.` });
       return;
     }
     const client = { id: nextId("CLI", storedClients), name, document: documentValue, email, phone: String(data.get("phone") || "").trim(), company: String(data.get("company") || "").trim(), notes: String(data.get("notes") || "").trim(), createdAt: currentDateTime(), active: true };
+    try { await persistWorkspaceRow("clients", client); }
+    catch (error) { notify({ tone: "info", title: "Cliente não cadastrado", message: error.message }); return; }
     setData((current) => ({ ...current, clients: [client, ...(current.clients || [])] }));
     logEvent(org.id, currentPerson.name, "Cliente cadastrado", `${client.name}${client.document ? ` · ${client.document}` : ""}`, "info");
     setModal("");
@@ -490,7 +530,7 @@ function Workspace({ store, theme, toggleTheme }) {
     });
   };
 
-  const addInventoryItem = (event) => {
+  const addInventoryItem = async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const item = {
@@ -498,19 +538,23 @@ function Workspace({ store, theme, toggleTheme }) {
       sku: data.get("sku"), quantity: Number(data.get("quantity")), minimum: Number(data.get("minimum")),
       unitCost: Number(data.get("unitCost")), warrantyUntil: data.get("warrantyUntil") || "",
     };
+    try { await persistWorkspaceRow("inventory", item); }
+    catch (error) { notify({ tone: "info", title: "Item não cadastrado", message: error.message }); return; }
     setInventory((items) => [item, ...items]);
     logEvent(org.id, currentPerson.name, "Estoque", `Item cadastrado: ${item.name} (${item.quantity} un.)`, "info");
     setModal("");
     notify({ tone: "success", message: `${item.name} disponível no estoque.`, title: "Componente cadastrado" });
   };
 
-  const addService = (event) => {
+  const addService = async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const service = {
       id: nextId("SV", services), name: data.get("name"), category: data.get("category"),
       price: Number(data.get("price")), active: true, description: data.get("description") || "",
     };
+    try { await persistWorkspaceRow("services", service); }
+    catch (error) { notify({ tone: "info", title: "Serviço não cadastrado", message: error.message }); return; }
     setServices((current) => [service, ...current]);
     logEvent(org.id, currentPerson.name, "Serviço cadastrado", `${service.id} — ${service.name} (${money(service.price)})`, "info");
     setModal("");
@@ -655,6 +699,10 @@ function Workspace({ store, theme, toggleTheme }) {
   const issueInvoice = async (invoice) => {
     if (session.backend === "supabase") {
       const result = await restRpc("save_demo_document", { p_company_id: org.id, p_document: invoice });
+      if (remoteRecordsRef.current.companyId === org.id) {
+        for (const item of result.inventory || []) remoteRecordsRef.current.records.set(`inventory:${item.id}`, JSON.stringify(item));
+        for (const item of result.movements || []) remoteRecordsRef.current.records.set(`movements:${item.id}`, JSON.stringify(item));
+      }
       const changed = new Map((result.inventory || []).map((item) => [item.id, item]));
       if (changed.size) setInventory((items) => items.map((item) => changed.get(item.id) || item));
       if (result.movements?.length) setData((candidate) => ({ ...candidate, movementLog: [...result.movements, ...(candidate.movementLog || [])] }));
