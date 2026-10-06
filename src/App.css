@@ -902,7 +902,7 @@ tbody tr:hover { background: var(--hover-tint); }
 .assistant-dock { --guest-printer-width: 390px; position: fixed; z-index: 80; right: max(24px, env(safe-area-inset-right)); bottom: max(24px, env(safe-area-inset-bottom)); display: grid; justify-items: end; gap: 12px; font-family: var(--font-body, Inter, sans-serif); }
 .assistant-launcher { display: inline-flex; align-items: center; gap: 9px; min-height: 52px; padding: 0 19px; border: 1px solid color-mix(in srgb, var(--accent) 65%, white); border-radius: 999px; background: var(--accent); color: white; box-shadow: 0 12px 32px rgba(20, 34, 70, .27); font-weight: 700; cursor: pointer; transition: transform .18s, box-shadow .18s; }
 .assistant-launcher:hover { transform: translateY(-2px); box-shadow: 0 16px 36px rgba(20, 34, 70, .32); }
-.assistant-panel { display: grid; grid-template-rows: auto minmax(180px, 1fr) auto auto; width: min(390px, calc(100vw - 32px)); height: min(570px, calc(100dvh - 110px)); overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--card); color: var(--ink); box-shadow: 0 20px 60px rgba(20, 34, 70, .25); animation: assistant-in .18s ease-out; }
+.assistant-panel { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; width: min(390px, calc(100vw - 32px)); height: min(570px, calc(100dvh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom))); overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--card); color: var(--ink); box-shadow: 0 20px 60px rgba(20, 34, 70, .25); animation: assistant-in .18s ease-out; }
 .assistant-header { display: flex; align-items: center; gap: 10px; min-height: 66px; padding: 12px 15px; border-bottom: 1px solid var(--line-soft); background: var(--card-warm); }
 .assistant-mark { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 12px; background: color-mix(in srgb, var(--accent) 12%, var(--card)); color: var(--accent); }
 .assistant-guest-icon { width: 30px; height: 30px; }
@@ -1346,12 +1346,12 @@ html, body, .app-shell { background: var(--paper); }
   .auth-card h2 { font-size: 28px; }
   .auth-card .field input, .auth-submit, .auth-register-button { min-height: 48px; }
   .auth-foot { text-align: center; }
-  .assistant-panel { width: min(430px, calc(100vw - 20px)); height: min(76dvh, 620px); }
+  .assistant-panel { width: min(430px, calc(100vw - 20px - env(safe-area-inset-left) - env(safe-area-inset-right))); height: min(76dvh, 620px, calc(100dvh - 94px - env(safe-area-inset-top) - env(safe-area-inset-bottom))); }
   .assistant-dock { right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); }
 }
 
 @media (max-width: 420px) {
-  .assistant-dock { --guest-printer-width: min(430px, calc(100vw - 20px)); }
+  .assistant-dock { --guest-printer-width: min(430px, calc(100vw - 20px - env(safe-area-inset-left) - env(safe-area-inset-right))); }
   .topbar { padding-inline: 12px; }
   .breadcrumbs { max-width: 35vw; }
   .topbar-clock { display: none; }
@@ -1367,7 +1367,7 @@ html, body, .app-shell { background: var(--paper); }
 }
 
 @media (min-width: 421px) and (max-width: 720px) {
-  .assistant-dock { --guest-printer-width: min(430px, calc(100vw - 20px)); }
+  .assistant-dock { --guest-printer-width: min(430px, calc(100vw - 20px - env(safe-area-inset-left) - env(safe-area-inset-right))); }
 }
 
 @media (max-width: 900px) {
