@@ -41,7 +41,7 @@ export default function AssistantChat({ companyId, enabled, personName }) {
 
   return (
     <div className="assistant-dock">
-      {open && <section aria-label="Guest, ajuda do GesTI" className="assistant-panel">
+      {open && <section aria-label="Guest, ajuda do GesTI" aria-modal="false" className="assistant-panel" role="dialog">
         <header className="assistant-header"><span className="assistant-mark"><GuestMascot className="assistant-guest-icon" /></span><div><strong>Guest</strong><small>Ajuda do GesTI · {enabled ? "dados da sua empresa" : "sessão local"}</small></div><button aria-label="Fechar Guest" className="assistant-close" onClick={() => setOpen(false)} type="button"><Icon name="close" size={18} /></button></header>
         <div aria-live="polite" className="assistant-messages">
           {visibleMessages.map((message, index) => <div className={`assistant-message ${message.role === "user" ? "from-user" : "from-assistant"}`} key={`${index}-${message.role}`}><span>{message.content}</span></div>)}
