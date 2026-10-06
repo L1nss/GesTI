@@ -18,6 +18,19 @@
         } catch (error) {}
       })();
     </script>
+    <script>
+      window.addEventListener("vite:preloadError", function (event) {
+        event.preventDefault();
+        var recoveryKey = "gesti:chunk-recovery:" + window.location.pathname;
+        try {
+          var previousAttempt = Number(window.sessionStorage.getItem(recoveryKey) || 0);
+          if (Date.now() - previousAttempt > 15000) {
+            window.sessionStorage.setItem(recoveryKey, String(Date.now()));
+            window.location.reload();
+          }
+        } catch (error) {}
+      });
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
