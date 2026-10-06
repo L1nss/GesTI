@@ -1242,7 +1242,10 @@ html, body, .app-shell { background: var(--paper); }
 .assistant-panel { box-shadow: 0 20px 60px rgba(31, 54, 61, .18); }
 .assistant-launcher { width: 60px; min-height: 60px; justify-content: center; padding: 10px; border-radius: 50%; }
 .assistant-launcher-guest { width: 38px; height: 36px; }
-.assistant-panel { transform-origin: bottom right; animation: guest-modal-launch .76s cubic-bezier(.18,.78,.26,1.12) both; }
+.assistant-panel { position: relative; overflow: visible; transform-origin: bottom right; animation: guest-modal-launch .76s cubic-bezier(.18,.78,.26,1.12) .34s both; }
+.assistant-panel::after { position: absolute; right: 22px; bottom: -9px; width: 18px; height: 18px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--card); content: ""; transform: rotate(45deg); }
+.assistant-launcher[aria-expanded="true"] { width: 76px; min-height: 76px; }
+.assistant-launcher[aria-expanded="true"] .assistant-launcher-guest { width: 50px; height: 46px; }
 .nf-paper { --nf-line: #D6E2DD; --nf-ink: #1F363D; --nf-mid: #466068; --nf-faint: #6B8182; }
 .nf-head { border-bottom-color: #40798C; }
 .nf-badge { border-color: #40798C; background: #E8F1F3; color: #315F6B; }
