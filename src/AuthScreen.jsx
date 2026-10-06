@@ -32,7 +32,7 @@ function BrandPanel({ mascotMode = "idle", emailGaze = 0 }) {
   );
 }
 
-function LoginForm({ store, onSwitch, onMascotModeChange, onEmailGazeChange }) {
+function LoginForm({ store, onSwitch, onLoginStart, onLoginFailed, onMascotModeChange, onEmailGazeChange }) {
   const notify = useToast();
   const reduceMotion = useReducedMotion();
   const [email, setEmail] = useState("");
@@ -66,15 +66,18 @@ function LoginForm({ store, onSwitch, onMascotModeChange, onEmailGazeChange }) {
     event.preventDefault();
     setError("");
     setBusy(true);
+    onLoginStart();
     /* Pequeno atraso visual apenas para o estado "Verificando acesso…" aparecer. */
     try {
       const result = await new Promise((resolve) => window.setTimeout(() => resolve(store.login(email, password)), reduceMotion ? 0 : 350));
       if (result.ok) {
         notify({ tone: "success", message: `Bem-vindo(a) de volta, ${result.person.name}!`, title: result.company });
       } else {
+        onLoginFailed();
         setError(result.error);
       }
     } catch (cause) {
+      onLoginFailed();
       setError(cause.message || "Não foi possível validar o acesso neste navegador. Recarregue a página e tente novamente.");
     } finally {
       setBusy(false);
@@ -300,7 +303,7 @@ function InviteAcceptForm({ store, token, onBack }) {
   </motion.div>;
 }
 
-export default function AuthScreen({ store }) {
+export default function AuthScreen({ store, onLoginStart, onLoginFailed }) {
   const invitation = window.location.hash.match(/^#invite=([0-9a-f-]{36})$/i)?.[1] || "";
   const [mode, setMode] = useState(() => recoveryFromLink ? "recovery" : invitation ? "invite" : "login");
   const [recoveryPassword, setRecoveryPassword] = useState("");
@@ -317,7 +320,7 @@ export default function AuthScreen({ store }) {
           <motion.div animate={{ opacity: 1 }} exit={{ opacity: 0 }} initial={{ opacity: 0 }} key={mode} transition={{ duration: 0.16 }}>
             {mode === "recovery" ? <div className="auth-card"><h2>Definir nova senha</h2><p className="auth-subtitle">Use pelo menos 8 caracteres.</p><form className="auth-form" onSubmit={async (event) => { event.preventDefault(); setRecoveryBusy(true); setRecoveryError(""); try { await supabaseCompleteRecovery(recoveryPassword); setMode("login"); } catch (error) { setRecoveryError(error.message || "Não foi possível trocar a senha."); } finally { setRecoveryBusy(false); } }}><Field label="Nova senha"><input autoComplete="new-password" minLength={8} onChange={(event) => setRecoveryPassword(event.target.value)} required type="password" value={recoveryPassword} /></Field>{recoveryError && <p className="auth-error" role="alert">{recoveryError}</p>}<Button disabled={recoveryBusy} type="submit">{recoveryBusy ? "Salvando…" : "Salvar nova senha"}</Button></form></div>
               : mode === "invite" && invitation ? <InviteAcceptForm onBack={() => setMode("login")} store={store} token={invitation} /> : mode === "login"
-              ? <LoginForm onSwitch={() => { setMascotMode("idle"); setMode("register"); }} onEmailGazeChange={setEmailGaze} onMascotModeChange={setMascotMode} store={store} />
+              ? <LoginForm onLoginFailed={onLoginFailed} onLoginStart={onLoginStart} onSwitch={() => { setMascotMode("idle"); setMode("register"); }} onEmailGazeChange={setEmailGaze} onMascotModeChange={setMascotMode} store={store} />
               : <RegisterForm onSwitch={() => setMode("login")} store={store} />}
           </motion.div>
         </AnimatePresence>

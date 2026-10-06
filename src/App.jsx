@@ -1,7 +1,8 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { SideBar } from "./HtmlFunctions.jsx";
 import AuthScreen from "./AuthScreen.jsx";
+import LoginWelcome from "./LoginWelcome.jsx";
 import AssistantChat from "./AssistantChat.jsx";
 import { Button, Field, Icon, Modal, Reveal } from "./shared.jsx";
 import { useToast } from "./toast.js";
@@ -1025,6 +1026,8 @@ export default function App() {
   const store = useStore();
   const [theme, toggleTheme] = useTheme();
   const [booted, setBooted] = useState(false);
+  const [loginWelcome, setLoginWelcome] = useState(false);
+  const finishLoginWelcome = useCallback(() => setLoginWelcome(false), []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setBooted(true), 250);
@@ -1033,9 +1036,9 @@ export default function App() {
 
   if (!store.seeded || !booted) return <div className="boot-screen"><span className="brand-mark brand-mark-lg">G</span><span className="boot-hint">Carregando GesTI…</span></div>;
 
-  if (!store.session || !store.org) return <AuthScreen store={store} />;
+  if (!store.session || !store.org) return <AuthScreen onLoginFailed={() => setLoginWelcome(false)} onLoginStart={() => setLoginWelcome(true)} store={store} />;
 
-  return <Workspace key={store.session.orgId} store={store} theme={theme} toggleTheme={toggleTheme} />;
+  return <><Workspace key={store.session.orgId} store={store} theme={theme} toggleTheme={toggleTheme} />{loginWelcome && <LoginWelcome onComplete={finishLoginWelcome} />}</>;
 }
 
 export { ToastProvider } from "./shared.jsx";

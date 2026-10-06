@@ -883,6 +883,21 @@ tbody tr:hover { background: var(--hover-tint); }
 .demo-accounts button span { color: var(--ink-faint); font-size: 11.5px; }
 .auth-foot { width: min(440px, 100%); margin: 0; color: var(--ink-faint); font-size: 11px; text-align: left; }
 
+/* ---------- boas-vindas após o acesso ---------- */
+.login-welcome { position: fixed; z-index: 1000; inset: 0; width: 100vw; height: 100vh; height: 100dvh; background: #07393c; opacity: 1; transition: opacity .48s ease; }
+.login-welcome--fade { opacity: 0; pointer-events: none; }
+.login-welcome-stage { position: relative; display: grid; width: 100%; height: 100%; overflow: hidden; place-items: center; background: #07393c; }
+.login-welcome-guest { position: absolute; z-index: 2; top: 50%; left: 50%; width: clamp(150px, 21vw, 220px); transform: translate(-50%, -86%); color: #07393c; }
+.login-welcome-paper { position: absolute; z-index: 1; top: 50%; left: 50%; display: block; width: 116px; height: 152px; overflow: hidden; border: 1px solid #dbe6e3; border-radius: 10px; background: #fbfdfc; padding: 18px; transform: translate(-50%, -7%) scale(.92); opacity: 0; transform-origin: center; transition: width 1s cubic-bezier(.2,.78,.2,1), height 1s cubic-bezier(.2,.78,.2,1), border-radius .7s ease, transform 1s cubic-bezier(.2,.78,.2,1), opacity .22s ease; }
+.login-welcome--unfolding .login-welcome-paper, .login-welcome--welcome .login-welcome-paper, .login-welcome--fade .login-welcome-paper { z-index: 3; width: 100vw; height: 100vh; height: 100dvh; border: 0; border-radius: 0; padding: 0; transform: translate(-50%, -50%) scale(1); opacity: 1; }
+.login-welcome-brand { position: absolute; top: clamp(28px, 5vw, 56px); left: clamp(28px, 6vw, 80px); color: #07393c; font-size: 17px; font-weight: 700; letter-spacing: -.04em; opacity: 0; transition: opacity .4s ease; }
+.login-welcome-message { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; gap: 10px; padding: 24px; text-align: center; opacity: 0; transform: translateY(12px); transition: opacity .45s ease, transform .45s ease; }
+.login-welcome-message h1 { margin: 0; color: #07393c; font-family: var(--font-display); font-size: clamp(42px, 8vw, 76px); font-weight: 650; letter-spacing: -.06em; line-height: 1.05; }
+.login-welcome-message p { margin: 0; color: #587270; font-size: clamp(14px, 2vw, 18px); }
+.login-welcome--welcome .login-welcome-brand { opacity: 1; }
+.login-welcome--welcome .login-welcome-message { opacity: 1; transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) { .login-welcome, .login-welcome-paper, .login-welcome-brand, .login-welcome-message { transition: none !important; } }
+
 /* ---------- assistente interno ---------- */
 .assistant-dock { position: fixed; z-index: 80; right: max(24px, env(safe-area-inset-right)); bottom: max(24px, env(safe-area-inset-bottom)); display: grid; justify-items: end; gap: 12px; font-family: var(--font-body, Inter, sans-serif); }
 .assistant-launcher { display: inline-flex; align-items: center; gap: 9px; min-height: 52px; padding: 0 19px; border: 1px solid color-mix(in srgb, var(--accent) 65%, white); border-radius: 999px; background: var(--accent); color: white; box-shadow: 0 12px 32px rgba(20, 34, 70, .27); font-weight: 700; cursor: pointer; transition: transform .18s, box-shadow .18s; }
