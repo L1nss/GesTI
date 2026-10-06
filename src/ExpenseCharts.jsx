@@ -1,17 +1,19 @@
 import { useMemo, useState } from "react";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { CountUp, EmptyState, Icon, Reveal } from "./shared.jsx";
 import { money, shortDate } from "./utils.js";
 
-const CATEGORY_COLORS = ["#262626", "#fca311", "#737373", "#000000", "#a0a0a0", "#505050"];
+const COLORS = ["#2C666E", "#90DDF0", "#07393C", "#718A8C", "#B7C7C8", "#C28D38"];
 const AXIS_COLOR = "var(--chart-axis)";
 const GRID_COLOR = "var(--chart-grid)";
-
+const currentMonthKey = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+};
 const monthLabel = (key) => {
   const [year, month] = key.split("-");
   return new Intl.DateTimeFormat("pt-BR", { month: "short", year: "2-digit" }).format(new Date(Number(year), Number(month) - 1, 1)).replace(".", "");
 };
-
 function lastMonths(count) {
   const keys = [];
   const cursor = new Date();
@@ -22,214 +24,107 @@ function lastMonths(count) {
   }
   return keys;
 }
-
 function ChartsTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
-  const total = payload.reduce((sum, entry) => sum + (Number(entry.value) || 0), 0);
-  return (
-    <div className="chart-tooltip">
-      <strong>{label}</strong>
-      {payload.map((entry) => (
-        <span key={entry.dataKey}><i style={{ background: entry.color || entry.payload?.fill }} />{entry.name}: <b>{money(entry.value)}</b></span>
-      ))}
-      {payload.length > 1 && <small>Total: {money(total)}</small>}
-    </div>
-  );
+  return <div className="chart-tooltip"><strong>{label}</strong>{payload.map((entry) => <span key={entry.dataKey}><i style={{ background: entry.color || entry.payload?.fill }} />{entry.name}: <b>{money(entry.value)}</b></span>)}</div>;
 }
 
-/* --------------------- gráficos de gastos (aba Custos) --------------------- */
-
-export function ExpenseCharts({ expenses }) {
+/* Gráficos de custos ligados aos filtros da lista de lançamentos. */
+export function ExpenseCharts({ expenses = [], budgets = [], selectedMonth = "", onSelectMonth, selectedCategory = "Todas", onSelectCategory, onSelectExpense }) {
   const [range, setRange] = useState(6);
-  const [category, setCategory] = useState("Todas");
-
-  const categories = useMemo(() => Array.from(new Set(expenses.map((expense) => expense.category))).sort(), [expenses]);
-
+  const categories = useMemo(() => Array.from(new Set(expenses.map((expense) => expense.category).filter(Boolean))).sort(), [expenses]);
+  const keys = useMemo(() => lastMonths(range), [range]);
   const monthly = useMemo(() => {
-    const keys = lastMonths(range);
-    const buckets = Object.fromEntries(keys.map((key) => [key, { total: 0, approved: 0, pending: 0 }]));
+    const buckets = Object.fromEntries(keys.map((key) => [key, { key, approved: 0, pending: 0 }]));
     for (const expense of expenses) {
       const key = String(expense.date || "").slice(0, 7);
-      if (!(key in buckets)) continue;
-      if (expense.status === "Rejeitada") continue;
+      if (!buckets[key] || expense.status === "Rejeitada" || (selectedCategory !== "Todas" && expense.category !== selectedCategory)) continue;
       const value = Number(expense.amount) || 0;
-      buckets[key].total += value;
       if (expense.status === "Aprovada") buckets[key].approved += value;
       if (expense.status === "Pendente") buckets[key].pending += value;
     }
-    return keys.map((key) => ({
-      month: monthLabel(key),
-      Total: Number(buckets[key].total.toFixed(2)),
-      Aprovado: Number(buckets[key].approved.toFixed(2)),
-      Pendente: Number(buckets[key].pending.toFixed(2)),
-    }));
-  }, [expenses, range]);
+    return keys.map((key) => ({ ...buckets[key], month: monthLabel(key), total: buckets[key].approved + buckets[key].pending }));
+  }, [expenses, keys, selectedCategory]);
 
-  const byCategory = useMemo(() => {
-    const totals = {};
+  const activeMonth = selectedMonth || currentMonthKey();
+  const categoryData = useMemo(() => {
+    const grouped = new Map();
     for (const expense of expenses) {
-      if (expense.status === "Rejeitada" || (category !== "Todas" && expense.category !== category)) continue;
-      totals[expense.category] = (totals[expense.category] || 0) + (Number(expense.amount) || 0);
+      if (String(expense.date || "").slice(0, 7) !== activeMonth || expense.status === "Rejeitada") continue;
+      if (selectedCategory !== "Todas" && expense.category !== selectedCategory) continue;
+      const row = grouped.get(expense.category) || { name: expense.category || "Sem categoria", approved: 0, pending: 0 };
+      row[expense.status === "Aprovada" ? "approved" : "pending"] += Number(expense.amount) || 0;
+      grouped.set(expense.category, row);
     }
-    return Object.entries(totals)
-      .map(([name, value], index) => ({ name, value: Number(value.toFixed(2)), fill: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }))
-      .sort((a, b) => b.value - a.value);
-  }, [expenses, category]);
+    return [...grouped.values()].map((entry) => ({ ...entry, total: entry.approved + entry.pending })).sort((a, b) => b.total - a.total);
+  }, [expenses, activeMonth, selectedCategory]);
 
-  const topExpenses = useMemo(() => expenses.filter((expense) => expense.status !== "Rejeitada")
-    .sort((a, b) => Number(b.amount) - Number(a.amount))
-    .slice(0, 5), [expenses]);
+  const budgetData = useMemo(() => {
+    const byName = new Map(categoryData.map((entry) => [entry.name, { ...entry }]));
+    for (const item of budgets) {
+      if (String(item.month || "").slice(0, 7) !== activeMonth) continue;
+      const name = item.category || "Sem categoria";
+      if (selectedCategory !== "Todas" && name !== selectedCategory) continue;
+      const entry = byName.get(name) || { name, approved: 0, pending: 0, total: 0, budget: 0 };
+      entry.budget = (entry.budget || 0) + (Number(item.amount) || 0);
+      byName.set(name, entry);
+    }
+    return [...byName.values()].map((entry) => ({ ...entry, budget: entry.budget || 0 })).sort((a, b) => b.total - a.total || b.budget - a.budget);
+  }, [categoryData, budgets, activeMonth, selectedCategory]);
+  const topExpenses = useMemo(() => expenses.filter((expense) => expense.status !== "Rejeitada" && String(expense.date || "").startsWith(activeMonth) && (selectedCategory === "Todas" || expense.category === selectedCategory)).slice().sort((a, b) => Number(b.amount) - Number(a.amount)).slice(0, 5), [expenses, activeMonth, selectedCategory]);
 
-  const totalRange = monthly.reduce((sum, entry) => sum + entry.Total, 0);
-  const monthKeys = lastMonths(range);
-  const currentMonth = monthKeys[monthKeys.length - 1];
-  const previousMonth = monthKeys[monthKeys.length - 2];
-  const sumFor = (key) => monthly.find((entry) => entry.month === monthLabel(key))?.Total || 0;
-  const delta = previousMonth && sumFor(currentMonth) && sumFor(previousMonth)
-    ? ((sumFor(currentMonth) - sumFor(previousMonth)) / sumFor(previousMonth)) * 100
-    : 0;
+  const totalRange = monthly.reduce((sum, entry) => sum + entry.total, 0);
   const average = monthly.length ? totalRange / monthly.length : 0;
-  const highest = monthly.reduce((best, entry) => (entry.Total > best.Total ? entry : best), { month: "—", Total: 0 });
+  const pendingCurrent = expenses.filter((entry) => entry.status === "Pendente" && String(entry.date || "").startsWith(currentMonthKey()) && (selectedCategory === "Todas" || entry.category === selectedCategory)).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const budgetsCurrent = budgets.filter((entry) => String(entry.month || "").slice(0, 7) === activeMonth && (selectedCategory === "Todas" || entry.category === selectedCategory)).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const spendingCurrent = expenses.filter((entry) => entry.status !== "Rejeitada" && String(entry.date || "").startsWith(activeMonth) && (selectedCategory === "Todas" || entry.category === selectedCategory)).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const budgetUsage = budgetsCurrent ? Math.round(spendingCurrent / budgetsCurrent * 100) : null;
 
-  if (!expenses.length) {
-    return <EmptyState title="Sem dados de gastos ainda" note="Registre despesas para ver os gráficos de custos." />;
-  }
+  if (!expenses.length) return <EmptyState title="Sem dados de gastos ainda" note="Registre despesas para ver os gráficos de custos." />;
 
-  return (
-    <>
-    <Reveal>
-        <section className="charts-toolbar">
-          <div className="charts-range">
-            {[3, 6, 12].map((option) => (
-              <button className={range === option ? "range-on" : ""} key={option} onClick={() => setRange(option)} type="button">{option} meses</button>
-            ))}
-          </div>
-          <label className="charts-category">
-            <span>Categoria</span>
-            <select onChange={(event) => setCategory(event.target.value)} value={category}>
-              <option>Todas</option>
-              {categories.map((item) => <option key={item}>{item}</option>)}
-            </select>
-          </label>
-        </section>
+  return <>
+    <Reveal><section className="charts-toolbar">
+      <div className="charts-range" aria-label="Período dos gráficos">{[3, 6, 12].map((option) => <button className={range === option ? "range-on" : ""} key={option} onClick={() => setRange(option)} type="button">{option} meses</button>)}</div>
+      <label className="charts-category"><span>Categoria</span><select onChange={(event) => onSelectCategory?.(event.target.value)} value={selectedCategory}><option>Todas</option>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
+      <label className="charts-category"><span>Mês em foco</span><input aria-label="Mês em foco dos custos" onChange={(event) => onSelectMonth?.(event.target.value)} type="month" value={selectedMonth} /></label>
+      {(selectedMonth || selectedCategory !== "Todas") && <button className="text-link" onClick={() => { onSelectMonth?.(""); onSelectCategory?.("Todas"); }} type="button">Limpar filtros</button>}
+    </section></Reveal>
+
+    <Reveal delay={0.04}><section className="mini-metrics">
+      <div><span>Gastos no período</span><strong><CountUp format={money} value={totalRange} /></strong></div>
+      <div><span>Média mensal</span><strong><CountUp format={money} value={average} /></strong></div>
+      <div><span>Pendente de aprovação · mês atual</span><strong><CountUp format={money} value={pendingCurrent} /></strong></div>
+      <div><span>Uso do orçamento · {monthLabel(activeMonth)}</span><strong className={budgetUsage !== null && budgetUsage >= 90 ? "text-warning" : ""}>{budgetUsage === null ? "Sem limite" : `${budgetUsage}%`}</strong></div>
+    </section></Reveal>
+
+    <div className="charts-grid">
+      <Reveal className="chart-card" delay={0.06}>
+        <div className="chart-head"><div><h3>Despesas por mês</h3><p>Selecione uma coluna para filtrar os lançamentos. Rejeitadas ficam fora.</p></div><span className="chart-icon"><Icon name="trend" size={16} /></span></div>
+        <div className="chart-body"><ResponsiveContainer height="100%" width="100%"><BarChart data={monthly} margin={{ bottom: 0, left: 4, right: 8, top: 8 }} onClick={(event) => { const point = event?.activePayload?.[0]?.payload; if (point) onSelectMonth?.(point.key); }}>
+          <CartesianGrid stroke={GRID_COLOR} strokeDasharray="4 6" vertical={false} /><XAxis axisLine={false} dataKey="month" stroke={AXIS_COLOR} tick={{ fontSize: 11 }} tickLine={false} /><YAxis axisLine={false} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} tickFormatter={(value) => value >= 1000 ? `R$ ${(value / 1000).toFixed(1)}k` : `R$ ${value}`} tickLine={false} width={64} /><Tooltip content={<ChartsTooltip />} cursor={{ fill: "var(--chart-cursor)" }} /><Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11.5, paddingTop: 6 }} />
+          <Bar dataKey="approved" name="Aprovadas" stackId="spend" fill="#2C666E" radius={[0, 0, 0, 0]} /><Bar dataKey="pending" name="Pendentes" stackId="spend" fill="#90DDF0" radius={[6, 6, 0, 0]} />
+        </BarChart></ResponsiveContainer></div>
       </Reveal>
 
-      <Reveal delay={0.04}>
-        <section className="mini-metrics">
-          <div><span>Previsto + aprovado</span><strong><CountUp format={money} value={totalRange} /></strong></div>
-          <div><span>Média mensal</span><strong><CountUp format={money} value={average} /></strong></div>
-          <div>
-            <span>Variação vs. mês anterior</span>
-            <strong className={delta > 0 ? "text-warning" : delta < 0 ? "text-positive" : ""}>
-              {delta > 0 ? "▲" : delta < 0 ? "▼" : "•"} {Math.abs(delta).toFixed(1)}%
-            </strong>
-          </div>
-          <div><span>Mês com maior gasto previsto</span><strong>{highest.month}</strong></div>
-        </section>
+      <Reveal className="chart-card" delay={0.1}>
+        <div className="chart-head"><div><h3>Orçamento por categoria</h3><p>Realizado e pendente contra o limite mensal de {monthLabel(activeMonth)}.</p></div><span className="chart-icon"><Icon name="chart" size={16} /></span></div>
+        <div className="chart-body">{budgetData.length ? <ResponsiveContainer height="100%" width="100%"><BarChart data={budgetData} layout="vertical" margin={{ bottom: 0, left: 8, right: 14, top: 4 }} onClick={(event) => { const point = event?.activePayload?.[0]?.payload; if (point) onSelectCategory?.(point.name); }}>
+          <CartesianGrid stroke={GRID_COLOR} horizontal={false} strokeDasharray="4 6" /><XAxis axisLine={false} stroke={AXIS_COLOR} tick={{ fontSize: 10 }} tickFormatter={(value) => value >= 1000 ? `R$ ${(value / 1000).toFixed(1)}k` : `R$ ${value}`} tickLine={false} /><YAxis axisLine={false} dataKey="name" stroke={AXIS_COLOR} tick={{ fontSize: 10.5 }} tickLine={false} width={110} /><Tooltip content={<ChartsTooltip />} cursor={{ fill: "var(--chart-cursor)" }} /><Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+          <Bar barSize={13} dataKey="budget" name="Limite" fill="#B7C7C8" radius={[0, 6, 6, 0]} /><Bar barSize={13} dataKey="approved" name="Aprovado" stackId="actual" fill="#2C666E" /><Bar barSize={13} dataKey="pending" name="Pendente" stackId="actual" fill="#C28D38" radius={[0, 6, 6, 0]} />
+        </BarChart></ResponsiveContainer> : <EmptyState title="Sem despesas neste mês" note="Escolha outro mês ou registre um lançamento." />}</div>
       </Reveal>
 
-      <div className="charts-grid">
-        <Reveal className="chart-card" delay={0.06}>
-          <div className="chart-head">
-            <div><h3>Evolução dos gastos</h3><p>Total, aprovado e pendente por mês</p></div>
-            <span className="chart-icon"><Icon name="trend" size={16} /></span>
-          </div>
-          <div className="chart-body">
-            <ResponsiveContainer height="100%" width="100%">
-              <AreaChart data={monthly} margin={{ bottom: 0, left: 4, right: 8, top: 8 }}>
-                <defs>
-                  <linearGradient id="gradTotal" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#4C6FE7" stopOpacity={0.45} />
-                    <stop offset="100%" stopColor="#4C6FE7" stopOpacity={0.02} />
-                  </linearGradient>
-                  <linearGradient id="gradApproved" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#0AA6A6" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="#0AA6A6" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke={GRID_COLOR} strokeDasharray="4 6" vertical={false} />
-                <XAxis axisLine={false} dataKey="month" stroke={AXIS_COLOR} tick={{ fontSize: 11 }} tickLine={false} />
-                <YAxis axisLine={false} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} tickFormatter={(value) => (value >= 1000 ? `R$ ${(value / 1000).toFixed(1)}k` : `R$ ${value}`)} tickLine={false} width={64} />
-                <Tooltip content={<ChartsTooltip />} />
-                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11.5, paddingTop: 6 }} />
-                <Area dataKey="Total" fill="url(#gradTotal)" stroke="#4C6FE7" strokeWidth={2.2} type="monotone" />
-                <Area dataKey="Aprovado" fill="url(#gradApproved)" stroke="#0AA6A6" strokeWidth={1.8} type="monotone" />
-                <Area dataKey="Pendente" fill="transparent" stroke="#F2A93B" strokeDasharray="5 4" strokeWidth={1.8} type="monotone" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </Reveal>
+      <Reveal className="chart-card" delay={0.14}>
+        <div className="chart-head"><div><h3>Maiores despesas · {monthLabel(activeMonth)}</h3><p>Selecione uma barra para localizar o lançamento.</p></div><span className="chart-icon"><Icon name="receipt" size={16} /></span></div>
+        <div className="chart-body">{topExpenses.length ? <ResponsiveContainer height="100%" width="100%"><BarChart data={topExpenses} layout="vertical" margin={{ bottom: 0, left: 8, right: 16, top: 4 }} onClick={(event) => { const point = event?.activePayload?.[0]?.payload; if (point) onSelectExpense?.(point); }}>
+          <CartesianGrid stroke={GRID_COLOR} horizontal={false} strokeDasharray="4 6" /><XAxis axisLine={false} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} tickFormatter={(value) => value >= 1000 ? `R$ ${(value / 1000).toFixed(1)}k` : `R$ ${value}`} tickLine={false} /><YAxis axisLine={false} dataKey="title" stroke={AXIS_COLOR} tick={{ fontSize: 10.5 }} tickLine={false} width={150} /><Tooltip content={<ChartsTooltip />} cursor={{ fill: "var(--chart-cursor)" }} /><Bar barSize={16} dataKey="amount" name="Valor" fill="#2C666E" radius={[0, 7, 7, 0]}>{topExpenses.map((entry, index) => <Cell fill={COLORS[index % COLORS.length]} key={entry.id} />)}</Bar>
+        </BarChart></ResponsiveContainer> : <EmptyState title="Sem lançamentos" note="Não há despesas nos filtros selecionados." />}</div>
+      </Reveal>
 
-        <Reveal className="chart-card" delay={0.1}>
-          <div className="chart-head">
-            <div><h3>Distribuição por categoria</h3><p>{category === "Todas" ? "Todas as categorias" : `Filtro: ${category}`}</p></div>
-            <span className="chart-icon"><Icon name="chart" size={16} /></span>
-          </div>
-          <div className="chart-body">
-            {byCategory.length ? (
-              <ResponsiveContainer height="100%" width="100%">
-                <PieChart>
-                  <Pie
-                    data={byCategory}
-                    dataKey="value"
-                    innerRadius="58%"
-                    nameKey="name"
-                    outerRadius="82%"
-                    paddingAngle={3}
-                    stroke="var(--chart-pie-stroke)"
-                    strokeWidth={2}
-                  >
-                    {byCategory.map((entry) => <Cell fill={entry.fill} key={entry.name} />)}
-                  </Pie>
-                  <Tooltip content={<ChartsTooltip />} />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11.5 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyState title="Sem lançamentos" note="Nenhuma despesa nesta categoria." />
-            )}
-          </div>
-        </Reveal>
-
-        <Reveal className="chart-card" delay={0.14}>
-          <div className="chart-head">
-            <div><h3>Maiores despesas</h3><p>Top 5 lançamentos por valor</p></div>
-            <span className="chart-icon"><Icon name="receipt" size={16} /></span>
-          </div>
-          <div className="chart-body">
-            <ResponsiveContainer height="100%" width="100%">
-              <BarChart data={topExpenses} layout="vertical" margin={{ bottom: 0, left: 8, right: 16, top: 4 }}>
-                <CartesianGrid stroke={GRID_COLOR} horizontal={false} strokeDasharray="4 6" />
-                <XAxis axisLine={false} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} tickFormatter={(value) => (value >= 1000 ? `R$ ${(value / 1000).toFixed(1)}k` : `R$ ${value}`)} tickLine={false} />
-                <YAxis axisLine={false} dataKey="title" stroke={AXIS_COLOR} tick={{ fontSize: 10.5 }} tickLine={false} width={150} />
-                <Tooltip content={<ChartsTooltip />} cursor={{ fill: "var(--chart-cursor)" }} />
-                <Bar barSize={16} dataKey="amount" name="Valor" radius={[0, 7, 7, 0]}>
-                  {topExpenses.map((entry, index) => <Cell fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]} key={entry.id} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Reveal>
-
-        <Reveal className="chart-card chart-table" delay={0.18}>
-          <div className="chart-head">
-            <div><h3>Detalhamento</h3><p>Lançamentos mais relevantes do período</p></div>
-          </div>
-          <table>
-            <thead><tr><th>Despesa</th><th>Data</th><th>Status</th><th>Valor</th></tr></thead>
-            <tbody>
-              {topExpenses.map((expense) => (
-                <tr key={expense.id}>
-                  <td><span className="cell-title">{expense.title}</span><span className="cell-subtitle">{expense.category}</span></td>
-                  <td>{shortDate(expense.date)}</td>
-                  <td><span className={`badge badge-${expense.status === "Aprovada" ? "green" : expense.status === "Rejeitada" ? "red" : "amber"}`}>{expense.status}</span></td>
-                  <td className="amount-cell">{money(expense.amount)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Reveal>
-      </div>
-    </>
-  );
+      <Reveal className="chart-card chart-table" delay={0.18}>
+        <div className="chart-head"><div><h3>Maiores lançamentos</h3><p>Os mesmos filtros da lista abaixo são aplicados aqui.</p></div></div>
+        <table><thead><tr><th>Despesa</th><th>Data</th><th>Status</th><th>Valor</th></tr></thead><tbody>{topExpenses.map((expense) => <tr key={expense.id} onClick={() => onSelectExpense?.(expense)}><td><span className="cell-title">{expense.title}</span><span className="cell-subtitle">{expense.category}</span></td><td>{shortDate(expense.date)}</td><td><span className={`badge badge-${expense.status === "Aprovada" ? "green" : "amber"}`}>{expense.status}</span></td><td className="amount-cell">{money(expense.amount)}</td></tr>)}</tbody></table>
+      </Reveal>
+    </div>
+  </>;
 }

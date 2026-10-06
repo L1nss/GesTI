@@ -161,7 +161,7 @@ function InvoiceBuilder({ company, currentPerson, inventory, services, tickets, 
     void onCreate(invoice);
   };
 
-  const steps = ["Cliente", "Serviços", "Revisão"];
+  const steps = ["Cliente", "Itens e serviços", "Revisão"];
 
   const handleDocumentChange = (event) => {
     const masked = maskDocument(event.target.value);
@@ -285,8 +285,8 @@ function InvoiceBuilder({ company, currentPerson, inventory, services, tickets, 
 
         {step === 1 && (
           <div className="invoice-step-body">
-            <Field className="field-full" label="Descrição do serviço">
-              <input name="description" onChange={setField} placeholder="Ex.: Manutenção de equipamentos de TI — setembro/2026" value={form.description} />
+            <Field className="field-full" label="Resumo do serviço prestado (opcional)">
+              <input name="description" onChange={setField} placeholder="Ex.: Manutenção preventiva dos equipamentos da unidade" value={form.description} />
             </Field>
             {items.map((item) => (
               <div className="invoice-item-row" key={item.id}>
@@ -503,7 +503,18 @@ function LedgerPanel({ invoices, canAudit, onSeal }) {
   );
 }
 
-export default function InvoicePage({ company, currentPerson, inventory = [], invoices, services = [], tickets = [], clients = [], setInvoices, onIssueComplete, onLinkTicketInvoice, openSignal = 0, focusInvoiceId = "", onFocusHandled, canIssue = false }) {
+function ServiceCatalogPanel({ services, canManage, onAdd, onToggle, onRemove }) {
+  const rows = canManage ? services : services.filter((service) => service.active !== false);
+  return <Reveal delay={0.03}><section className="panel page-panel service-catalog-panel">
+    <div className="panel-heading"><div><h2>Catálogo para a nota</h2><p>Preços padrão usados ao adicionar serviços prestados aos documentos.</p><small>{services.filter((service) => service.active !== false).length} ativos · {services.filter((service) => service.active === false).length} inativos</small></div>{canManage && <Button onClick={onAdd}><Icon name="plus" size={15} /> Novo serviço</Button>}</div>
+    {rows.length ? <div className="service-grid">{rows.map((service) => <article className={`service-card ${service.active === false ? "service-off" : ""}`} key={service.id}>
+      <span className="service-icon"><Icon name="wrench" size={17} /></span><div className="service-copy"><strong>{service.name}</strong><small>{service.category}{service.description ? ` · ${service.description}` : ""}</small></div><div className="service-meta"><strong>{money(service.price)}</strong><small>{service.active === false ? "inativo" : "preço padrão"}</small></div>
+      {canManage && <div className="service-actions"><button aria-label={service.active === false ? `Ativar ${service.name}` : `Desativar ${service.name}`} className="approve-button" onClick={() => onToggle(service)} type="button"><Icon name={service.active === false ? "check" : "clock"} size={15} /></button>{service.active !== false && <button aria-label={`Desativar ${service.name}`} className="reject-button" onClick={() => onRemove(service)} type="button"><Icon name="close" size={15} /></button>}</div>}
+    </article>)}</div> : <EmptyState note={canManage ? "Cadastre o serviço prestado aqui ou inclua um item manualmente na nota." : "Ainda não há serviços ativos no catálogo."} title="Catálogo vazio" />}
+  </section></Reveal>;
+}
+
+export default function InvoicePage({ company, currentPerson, inventory = [], invoices, services = [], tickets = [], clients = [], setInvoices, onIssueComplete, onLinkTicketInvoice, onAddService, onToggleService, onRemoveService, openSignal = 0, focusInvoiceId = "", onFocusHandled, canIssue = false, canManageServices = false }) {
   const notify = useToast();
   const canAudit = ["Admin", "Dono da empresa", "Gerência"].includes(currentPerson?.role);
   const [modal, setModal] = useState(false);
@@ -578,6 +589,7 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
 
   return (
     <>
+      <ServiceCatalogPanel canManage={canManageServices} onAdd={onAddService} onRemove={onRemoveService} onToggle={onToggleService} services={services} />
       <LedgerPanel canAudit={canAudit} invoices={invoices} onSeal={sealLegacy} />
       <Reveal>
         <section className="mini-metrics">
@@ -596,7 +608,6 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
               <input aria-label="Buscar documento" onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por número ou cliente" value={query} />
             </label>
             <Button className="button-secondary" onClick={downloadCsv} variant="secondary"><Icon name="download" size={16} /> Exportar CSV</Button>
-            {canIssue && <Button onClick={() => setModal(true)}><Icon name="plus" size={16} /> Criar documento</Button>}
           </div>
           {filtered.length ? (
             <div className="table-scroll">

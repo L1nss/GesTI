@@ -398,6 +398,16 @@ tbody tr:hover { background: var(--hover-tint); }
 .chart-tooltip span b { color: var(--ink); font-variant-numeric: tabular-nums; }
 .chart-tooltip i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
 .chart-tooltip small { color: var(--ink-faint); border-top: 1px dashed var(--line-soft); padding-top: 5px; }
+.chart-table tbody tr { cursor: pointer; }
+.chart-table tbody tr:hover { background: var(--hover-tint); }
+.charts-category input[type="month"] { min-height: 38px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card); color: var(--ink-mid); font-size: 13px; padding: 0 10px; }
+.abc-selection { display: flex; align-items: center; flex-wrap: wrap; gap: 16px 24px; border-top: 1px solid var(--line-soft); padding: 14px 22px 18px; }
+.abc-selection > div:first-child { display: grid; gap: 3px; min-width: 190px; }
+.abc-selection > div:first-child strong { color: var(--ink); font-size: 13px; }
+.abc-selection span, .abc-selection > p { margin: 0; color: var(--ink-faint); font-size: 11.5px; }
+.abc-selection-value { display: grid; gap: 3px; }
+.abc-selection-value strong { color: var(--ink); font-size: 13px; font-variant-numeric: tabular-nums; }
+.abc-selection .button { margin-left: auto; }
 
 /* ---------- estado vazio ---------- */
 .empty-state { display: grid; justify-items: center; gap: 6px; padding: 48px 20px; color: var(--ink-faint); text-align: center; }

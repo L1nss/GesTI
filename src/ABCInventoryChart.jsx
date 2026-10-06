@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Bar, CartesianGrid, Cell, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { EmptyState } from "./shared.jsx";
 import { money } from "./utils.js";
@@ -18,17 +18,18 @@ function AbcTooltip({ active, payload, label }) {
   );
 }
 
-export function ABCInventoryChart({ inventory = [] }) {
+export function ABCInventoryChart({ inventory = [], canManage = false, onAdjust }) {
+  const [selectedId, setSelectedId] = useState("");
   const data = useMemo(() => {
     const ranked = inventory
       .map((item) => ({ ...item, stockValue: Math.max(0, Number(item.quantity || 0) * Number(item.unitCost || 0)) }))
       .sort((a, b) => b.stockValue - a.stockValue);
     const total = ranked.reduce((sum, item) => sum + item.stockValue, 0);
-    let accumulated = 0;
-    return ranked.map((item) => {
-      const previousShare = total ? accumulated / total : 0;
-      accumulated += item.stockValue;
-      const cumulativeShare = total ? accumulated / total : 0;
+    return ranked.map((item, index) => {
+      const accumulatedBefore = ranked.slice(0, index).reduce((sum, entry) => sum + entry.stockValue, 0);
+      const accumulatedThrough = accumulatedBefore + item.stockValue;
+      const previousShare = total ? accumulatedBefore / total : 0;
+      const cumulativeShare = total ? accumulatedThrough / total : 0;
       return {
         ...item,
         cumulativePercent: Number((cumulativeShare * 100).toFixed(1)),
@@ -38,6 +39,8 @@ export function ABCInventoryChart({ inventory = [] }) {
   }, [inventory]);
 
   const total = data.reduce((sum, item) => sum + item.stockValue, 0);
+  const selected = data.find((item) => item.id === selectedId);
+  const suggestedRestock = selected ? Math.max(0, Number(selected.minimum || 0) * 2 - Number(selected.quantity || 0)) : 0;
   if (!data.length || !total) {
     return <section className="panel abc-panel"><div className="panel-heading"><div><h2>Análise ABC do estoque</h2><p>Distribuição do valor em estoque por componente</p></div></div><EmptyState title="Sem dados para classificar" note="Cadastre componentes com quantidade e custo unitário para ver a curva ABC." /></section>;
   }
@@ -58,12 +61,20 @@ export function ABCInventoryChart({ inventory = [] }) {
             <Tooltip content={<AbcTooltip />} />
             <ReferenceLine y={80} yAxisId="percent" stroke="#fca311" strokeDasharray="4 4" />
             <ReferenceLine y={95} yAxisId="percent" stroke="#737373" strokeDasharray="4 4" />
-            <Bar dataKey="stockValue" name="Valor em estoque" radius={[4, 4, 0, 0]}>
-              {data.map((item) => <Cell fill={CLASS_COLORS[item.classification]} key={item.id || item.name} />)}
+            <Bar cursor="pointer" dataKey="stockValue" name="Valor em estoque" onClick={(item) => setSelectedId(item?.payload?.id || item?.id || "")} radius={[4, 4, 0, 0]}>
+              {data.map((item) => <Cell fill={item.id === selectedId ? "#90DDF0" : CLASS_COLORS[item.classification]} key={item.id || item.name} />)}
             </Bar>
             <Line activeDot={{ r: 4 }} dataKey="cumulativePercent" dot={{ r: 2 }} name="Acumulado" stroke="#262626" strokeWidth={2} type="monotone" yAxisId="percent" />
           </ComposedChart>
         </ResponsiveContainer>
+      </div>
+      <div className="abc-selection">
+        {selected ? <>
+          <div><strong>{selected.name}</strong><span>Classe {selected.classification} · {selected.quantity} em estoque · mínimo {selected.minimum || 0}</span></div>
+          <div className="abc-selection-value"><span>Valor atual</span><strong>{money(selected.stockValue)}</strong></div>
+          <div className="abc-selection-value"><span>Reposição sugerida · alvo 2× mínimo</span><strong>{suggestedRestock} un. · {money(suggestedRestock * Number(selected.unitCost || 0))}</strong></div>
+          {canManage && suggestedRestock > 0 && <button className="button button-secondary" onClick={() => onAdjust?.(selected, suggestedRestock)} type="button">Registrar entrada sugerida</button>}
+        </> : <p>Selecione uma barra para ver o componente e calcular a reposição. O gráfico mostra o valor atual do estoque.</p>}
       </div>
     </section>
   );

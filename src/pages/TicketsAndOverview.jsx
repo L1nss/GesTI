@@ -11,7 +11,7 @@ const formatDueDate = (value) => new Intl.DateTimeFormat("pt-BR", { dateStyle: "
 
 /* Central de chamados: fila crítica, filtros, SLA e histórico.
    Prazo exibido a partir do dueAt real; prioridade editável só para TI/Admin. */
-export function TicketsPage({ now, tickets, invoices, query, setQuery, canManage, canClaim, canSetCategory, canSetPriority, canManageServices, services, onAddService, onToggleService, onRemoveService, onLinkService, onUnlinkService, onClaim, onDeclineAssignment, onChangeStatus, onChangePriority, onAddComment, detail, setDetail, replyTemplates = [], canManageReplies = false, onSaveReply, onDeleteReply, currentPersonName, role, onSurvey }) {
+export function TicketsPage({ now, tickets, invoices, query, setQuery, canManage, canClaim, canSetCategory, canSetPriority, canManageServices, services, onLinkService, onUnlinkService, onClaim, onDeclineAssignment, onChangeStatus, onChangePriority, onAddComment, detail, setDetail, replyTemplates = [], canManageReplies = false, onSaveReply, onDeleteReply, currentPersonName, role, onSurvey }) {
   const [statusFilter, setStatusFilter] = useState("Todos");
   const [priorityFilter, setPriorityFilter] = useState("Todas as prioridades");
   const [categoryFilter, setCategoryFilter] = useState("Todas as categorias");
@@ -38,7 +38,6 @@ export function TicketsPage({ now, tickets, invoices, query, setQuery, canManage
       <section className="panel page-panel"><div className="toolbar"><label className="search-box"><Icon name="search" size={18} /><input aria-label="Buscar chamado" onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por assunto, solicitante, status ou responsável" value={query} /></label><select aria-label="Filtrar chamados por status" className="filter-select" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>Todos</option>{TICKET_STATUSES.map((status) => <option key={status}>{status}</option>)}</select><select aria-label="Filtrar chamados por prioridade" className="filter-select" onChange={(event) => setPriorityFilter(event.target.value)} value={priorityFilter}><option>Todas as prioridades</option>{PRIORITY_LEVELS.map((priority) => <option key={priority}>{priority}</option>)}</select>{categories.length > 0 && <select aria-label="Filtrar chamados por categoria" className="filter-select" onChange={(event) => setCategoryFilter(event.target.value)} value={categoryFilter}><option>Todas as categorias</option>{categories.map((category) => <option key={category}>{category}</option>)}</select>}<label className="date-filter">De <input aria-label="Chamados a partir desta data" max={toDate || undefined} onChange={(event) => setFromDate(event.target.value)} type="date" value={fromDate} /></label><label className="date-filter">Até <input aria-label="Chamados até esta data" min={fromDate || undefined} onChange={(event) => setToDate(event.target.value)} type="date" value={toDate} /></label><button className="button button-secondary" onClick={() => downloadCsv(rows, "gesti-chamados", ["Código", "Assunto", "Solicitante", "Categoria", "Prioridade", "Status", "Responsável", "Abertura", "Prazo", "Conclusão"], (ticket) => [ticket.id, ticket.title, ticket.requester, ticket.category || "", ticket.priority, ticket.status, ticket.assignee || "", ticket.createdAt, ticket.dueAt || "", ticket.resolvedAt || ""])} type="button"><Icon name="download" size={15} /> CSV</button></div>
         {rows.length ? <div className="table-scroll"><table><thead><tr><th>Chamado</th><th>Solicitante</th><th>Atendido por</th><th>Prioridade</th><th>Situação</th><th>Prazo / conclusão</th><th>Ações</th></tr></thead><tbody>{[...critical, ...normal].map(renderRow)}</tbody></table></div> : <EmptyState note="Tente outro termo ou altere os filtros." title="Nenhum chamado encontrado" />}</section>
       {detail && <TicketDetailModal canClaim={canClaim} canManage={canManage} canManageServices={canManageServices} canSetCategory={canSetCategory} canSetPriority={canSetPriority} currentPersonName={currentPersonName} invoices={invoices} now={now} onChangePriority={onChangePriority} onChangeStatus={onChangeStatus} onAddComment={onAddComment} onClaim={onClaim} onDeclineAssignment={onDeclineAssignment} onLinkService={onLinkService} onUnlinkService={onUnlinkService} onSurvey={onSurvey} replyTemplates={replyTemplates} role={role} services={services} setOpenDetail={setDetail} ticket={tickets.find((item) => item.id === detail)} />}
-      <ServicesCatalogBlock canManage={canManageServices} onAdd={onAddService} onRemove={onRemoveService} onToggle={onToggleService} services={services} />
       <ReplyTemplatesPanel canManage={canManageReplies} onDelete={onDeleteReply} onSave={onSaveReply} templates={replyTemplates} />
     </PageErrorBoundary>
   );
@@ -139,26 +138,6 @@ function ModalWrapper({ title, onClose, children }) {
         {children}
       </section>
     </div>
-  );
-}
-
-function ServicesCatalogBlock({ services, canManage, onAdd, onToggle, onRemove }) {
-  const active = services.filter((service) => service.active !== false);
-  return (
-    <section className="panel page-panel service-catalog-panel">
-      <div className="panel-heading"><div><h2>Catálogo de serviços</h2><p>Serviços com valor que podem ser aplicados aos chamados.</p><small>{active.length} ativos · {services.length - active.length} desativados</small></div>{canManage && <button className="button button-primary" onClick={onAdd} type="button"><Icon name="plus" size={16} /> Novo serviço</button>}</div>
-      {services.length ? <div className="service-grid">{services.map((service) => (
-        <article className={`service-card ${service.active === false ? "service-off" : ""}`} key={service.id}>
-          <span className="service-icon"><Icon name="wrench" size={17} /></span>
-          <div className="service-copy"><strong>{service.name}</strong><small>{service.category}{service.description ? ` · ${service.description}` : ""}</small></div>
-          <div className="service-meta"><strong>{money(service.price)}</strong><small>{service.id}{service.active === false ? " · desativado" : " · ativo"}</small></div>
-          {canManage && <div className="service-actions">
-            <button aria-label={service.active === false ? `Ativar ${service.name}` : `Desativar ${service.name}`} className="approve-button" onClick={() => onToggle(service)} type="button"><Icon name={service.active === false ? "check" : "clock"} size={15} /></button>
-            <button aria-label={`Desativar ${service.name}`} className="reject-button" disabled={service.active === false} onClick={() => onRemove(service)} type="button"><Icon name="close" size={15} /></button>
-          </div>}
-        </article>
-      ))}</div> : <EmptyState note="Cadastre serviços para vinculá-los às notas e aos chamados." title="Nenhum serviço cadastrado" />}
-    </section>
   );
 }
 
