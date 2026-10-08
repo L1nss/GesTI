@@ -7,7 +7,7 @@ import { hasSupabaseSession, restSelect } from "../supabaseApi.js";
 
 /* Logs do sistema: auditoria com filtros, busca e exportação CSV.
    (A exportação dos logs era uma funcionalidade ausente.) */
-export function LogsPage({ canLog, orgId, onClear }) {
+export function LogsPage({ canLog, orgId, onClear, remoteAuth = false }) {
   const notify = useToast();
   const [allLogs, setLogs] = useState(readLogs);
   const [remoteLogs, setRemoteLogs] = useState([]);
@@ -54,7 +54,7 @@ export function LogsPage({ canLog, orgId, onClear }) {
           <label className="search-box"><Icon name="search" size={18} /><input aria-label="Buscar log" onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por pessoa, ação ou detalhe" value={query} /></label>
           <select aria-label="Filtrar logs por nível" className="filter-select" onChange={(event) => setLevelFilter(event.target.value)} value={levelFilter}><option>Todos</option><option value="info">Info</option><option value="warning">Avisos</option><option value="success">Conclusões</option></select>
           <Button variant="secondary" onClick={() => { downloadCsv(rows, "gesti-logs", ["Data", "Pessoa", "Ação", "Detalhes", "Nível"], (entry) => [formatDateTime(entry.date), entry.actor, entry.action, entry.details, entry.level]); notify({ message: "Logs exportados em CSV." }); }}><Icon name="download" size={15} /> CSV</Button>
-          {canLog && <Button variant="secondary" onClick={onClear}><Icon name="close" size={15} /> Limpar logs</Button>}
+          {canLog && <Button variant="secondary" onClick={onClear}><Icon name="close" size={15} />{remoteAuth ? "Limpar logs locais" : "Limpar logs"}</Button>}
         </div>
         {rows.length ? <div className="log-list">{rows.map((entry) => (
           <div className="log-row" key={entry.id}>

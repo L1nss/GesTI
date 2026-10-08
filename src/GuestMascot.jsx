@@ -1,6 +1,6 @@
-export default function GuestMascot({ mode = "idle", gaze = 0, className = "" }) {
+export default function GuestMascot({ mode = "idle", gaze = 0, className = "", paperLabel = "G" }) {
   const pupilX = Math.max(-1, Math.min(1, Number(gaze) || 0)) * 4;
-  const modifier = mode === "email" ? " guest-mascot--email" : mode === "password" ? " guest-mascot--password" : mode === "eject" ? " guest-mascot--eject" : mode === "retract" ? " guest-mascot--retract" : "";
+  const modifier = mode === "email" ? " guest-mascot--email" : mode === "password" ? " guest-mascot--password" : mode === "eject" ? " guest-mascot--eject" : mode === "retract" ? " guest-mascot--retract" : mode === "print" ? " guest-mascot--print" : "";
 
   return (
     <span aria-hidden="true" className={`guest-mascot${modifier}${className ? ` ${className}` : ""}`}>
@@ -24,10 +24,17 @@ export default function GuestMascot({ mode = "idle", gaze = 0, className = "" })
           <ellipse cx="129" cy="114" rx="9" ry="11" fill="#d8ffff" />
           <ellipse cx="131" cy="115" rx="4" ry="5" fill="#123e40" />
         </g>
+        <path className="guest-closed-eye guest-closed-eye-left" d="M82 115q9 8 18 0" />
+        <path className="guest-closed-eye guest-closed-eye-right" d="M120 115q9 8 18 0" />
         <path className="guest-smile" d="M101 132c5 5 13 5 18 0" stroke="#90ddf0" strokeLinecap="round" strokeWidth="3" />
         <path d="M54 157h94" stroke="#4b8584" strokeLinecap="round" strokeWidth="5" />
         <rect x="85" y="166" width="49" height="8" rx="4" fill="#9dbab6" />
         <circle cx="154" cy="166" r="4" fill="#5ca9a5" />
+        <g className="guest-belly-sheet">
+          <rect x="78" y="166" width="64" height="80" rx="4" fill="#fff" stroke="#4f8e8e" strokeWidth="2" />
+          <text x="110" y="188" fill="#2c666e" fontFamily="Arial, sans-serif" fontSize="12" fontWeight="700" textAnchor="middle">{paperLabel}</text>
+          <path d="M89 199h42m-42 9h42m-42 9h29" stroke="#a7c7c5" strokeLinecap="round" strokeWidth="3" />
+        </g>
         <g className="guest-arm guest-arm-left">
           <path d="M45 107c-15 1-17 18-7 27l25 8" stroke="#2c666e" strokeLinecap="round" strokeWidth="10" />
           <path d="M54 132c-2-5 1-10 6-12l7-3c5-2 10 1 11 5l2 6c1 4-1 8-5 10l-7 3c-5 2-10 0-12-4l-2-5Z" fill="#d6e7e3" stroke="#2c666e" strokeLinejoin="round" strokeWidth="3" />

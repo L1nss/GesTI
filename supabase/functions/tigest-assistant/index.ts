@@ -1,6 +1,6 @@
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type, prefer, x-client-info",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -27,6 +27,8 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 });
 
 function safeString(value: unknown, max = 300) {
+  // Remove explicit non-printable control characters before sending text to the assistant.
+  // oxlint-disable-next-line no-control-regex
   return String(value ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, " ").slice(0, max);
 }
 

@@ -12,10 +12,11 @@ export default function LoginWelcome({ onComplete }) {
       timers.push(window.setTimeout(() => setPhase("fade"), 1100));
       timers.push(window.setTimeout(onComplete, 1450));
     } else {
-      timers.push(window.setTimeout(() => setPhase("unfolding"), 520));
-      timers.push(window.setTimeout(() => setPhase("welcome"), 1580));
-      timers.push(window.setTimeout(() => setPhase("fade"), 2720));
-      timers.push(window.setTimeout(onComplete, 3220));
+      timers.push(window.setTimeout(() => setPhase("catching"), 850));
+      timers.push(window.setTimeout(() => setPhase("throwing"), 1450));
+      timers.push(window.setTimeout(() => setPhase("welcome"), 2180));
+      timers.push(window.setTimeout(() => setPhase("fade"), 3000));
+      timers.push(window.setTimeout(onComplete, 3450));
     }
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [onComplete, reduceMotion]);
@@ -23,9 +24,9 @@ export default function LoginWelcome({ onComplete }) {
   return (
     <div aria-atomic="true" aria-live="polite" className={`login-welcome login-welcome--${phase}`} role="status">
       <div className="login-welcome-stage">
-        <GuestMascot className="login-welcome-guest" mode="eject" />
+        <div className="login-welcome-scene"><GuestMascot className="login-welcome-guest" mode="print" /></div>
         <div className="login-welcome-paper">
-          <span className="login-welcome-brand">GesTI</span>
+          <span className="login-welcome-brand">Gesti</span>
           <div className="login-welcome-message">
             <h1>Bem-vindo!</h1>
             <p>Sua tela inicial está pronta.</p>

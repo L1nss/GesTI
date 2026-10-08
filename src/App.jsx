@@ -3,13 +3,14 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { SideBar } from "./HtmlFunctions.jsx";
 import AuthScreen from "./AuthScreen.jsx";
 import LoginWelcome from "./LoginWelcome.jsx";
+import PrivacyControls from "./PrivacyControls.jsx";
 import AssistantChat from "./AssistantChat.jsx";
 import { Button, Field, Icon, Modal, Reveal } from "./shared.jsx";
 import { useToast } from "./toast.js";
 import { useSavedState, useTheme } from "./hooks.js";
 import { logEvent, PRIORITY_LEVELS, readLogs, useStore, writeLogs, classifyTicketPriority } from "./store.js";
-import { CRITICAL_PRIORITIES, downloadCsv, downloadJson, money, nextId, PAGES, ROLE_PAGES, ROLE_PERMISSIONS, SLA_BY_PRIORITY, PAGE_BY_SLUG, slugify, today } from "./utils.js";
-import { captureAppError, hasSupabaseSession, restDelete, restInsert, restRpc, restSelect, restUpdate, writeAuditEvent } from "./supabaseApi.js";
+import { CRITICAL_PRIORITIES, downloadCsv, downloadJson, money, nextId, PAGES, ROLE_PAGES, ROLE_PERMISSIONS, ROLES, SLA_BY_PRIORITY, PAGE_BY_SLUG, slugify, today } from "./utils.js";
+import { captureAppError, hasSupabaseSession, restDelete, restInsert, restRpc, restSelect, restUpdate, supabaseRegisterEmployee, supabaseUpdateCurrentPassword, writeAuditEvent } from "./supabaseApi.js";
 
 /* Notas fiscais e Custos carregadas sob demanda: Recharts e o emissor de
    notas respondem pela maior parte do bundle (antes: ~930 kB num chunk só). */
@@ -27,8 +28,22 @@ const LazyRegistryPage = lazy(() => import("./pages/InventoryAndMore.jsx").then(
 const LazyLogsPage = lazy(() => import("./pages/LogsPage.jsx").then((module) => ({ default: module.LogsPage })));
 const LazyCompanyPage = lazy(() => import("./pages/CompanyPage.jsx").then((module) => ({ default: module.CompanyPage })));
 const LazyAboutPage = lazy(() => import("./pages/AboutPage.jsx").then((module) => ({ default: module.AboutPage })));
+const LazyTeamHub = lazy(() => import("./pages/TeamHub.jsx"));
+const EmployeeRegistration = lazy(() => import("./pages/EmployeeRegistration.jsx"));
+const FirstLoginPassword = lazy(() => import("./pages/FirstLoginPassword.jsx"));
 
 const currentDateTime = () => new Date().toISOString();
+const EMPTY_LIST = [];
+const PAGE_CAPABILITIES = { Clientes: ["manageClients"], Estoque: ["manageStock"], Custos: ["viewCosts"], Empresa: ["managePeople", "manageCompany"], Funcionários: ["managePeople"], Logs: ["clearLogs"] };
+const createEmployeeAccessCode = () => {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const random = crypto.getRandomValues(new Uint8Array(12));
+  return Array.from(random, (byte) => alphabet[byte % alphabet.length]).join("");
+};
+const hashAccessCode = async (code) => {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+};
 
 /* Roteamento por hash: mantém a página no recarregar (F5) e permite deep link. */
 function useHashPage(fallback) {
@@ -42,10 +57,10 @@ function useHashPage(fallback) {
     window.addEventListener("hashchange", handleHash);
     return () => window.removeEventListener("hashchange", handleHash);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const navigate = (nextPage) => {
+  const navigate = useCallback((nextPage) => {
     window.location.hash = `/${slugify(nextPage)}`;
     setPage(nextPage);
-  };
+  }, []);
   return [page, navigate];
 }
 
@@ -58,31 +73,67 @@ function Workspace({ store, theme, toggleTheme }) {
 
   /* Inicialize permissões antes dos efeitos abaixo: elas são usadas no array
      de dependências e no callback de sincronização remota. */
-  const role = session.role;
+  const role = currentPerson?.role || session.role;
+  const rolePermissions = org.rolePermissions || ROLE_PERMISSIONS;
   const permissions = useMemo(() => {
-    const effective = Object.fromEntries((ROLE_PERMISSIONS[role] || []).map((permission) => [permission, true]));
-    return { ...effective, ...(currentPerson?.capabilities || {}) };
-  }, [role, currentPerson]);
-  const can = (permission) => permissions[permission] === true;
+    const effective = Object.fromEntries((rolePermissions[role] || ROLE_PERMISSIONS[role] || []).map((permission) => [permission, true]));
+    return effective;
+  }, [role, rolePermissions]);
+  const can = useCallback((permission) => permissions[permission] === true, [permissions]);
 
   const [page, navigateToPage] = useHashPage("Visão geral");
   const [sideOpen, setSideOpen] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [readAlerts, setReadAlerts] = useSavedState(`tigest-alerts-read-v1-${org.id}`, []);
+  const [teamMessages, setTeamMessages] = useState([]);
+  const seenTeamMessages = useRef(null);
   const [now, setNow] = useState(() => new Date());
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState("");
-  const [inviteUrl, setInviteUrl] = useState("");
   const [clientEditing, setClientEditing] = useState(null);
   const [ticketDetail, setTicketDetail] = useState("");
   const [invoiceSignal, setInvoiceSignal] = useState(0);
   const [invoiceFocus, setInvoiceFocus] = useState("");
+  const [dashboardMetrics, setDashboardMetrics] = useSavedState(`gesti-dashboard-metrics-v1-${org.id}-${session.userId || session.email}`, ["open", "overdue", "processing"]);
   const [backupBusy, setBackupBusy] = useState(false);
   const [tourStep, setTourStep] = useState(() => org.onboardingComplete ? null : 0);
   const [remoteReady, setRemoteReady] = useState(() => !hasSupabaseSession() || !/^[0-9a-f-]{36}$/i.test(org.id));
   const [remoteError, setRemoteError] = useState("");
   const remoteRecordsRef = useRef({ companyId: "", records: new Map() });
   const remoteWriteQueueRef = useRef(Promise.resolve());
+
+  useEffect(() => {
+    if (!remoteReady || !hasSupabaseSession() || !session.userId || !/^[0-9a-f-]{36}$/i.test(org.id)) return;
+    let active = true;
+    restSelect("member_preferences", `company_id=eq.${org.id}&user_id=eq.${session.userId}`).then((rows) => {
+      if (active && Array.isArray(rows) && Array.isArray(rows[0]?.dashboard_metrics)) setDashboardMetrics(rows[0].dashboard_metrics);
+    }).catch((error) => { if (active) void captureAppError(error, org.id); });
+    return () => { active = false; };
+  }, [remoteReady, org.id, session.userId, setDashboardMetrics]);
+
+  useEffect(() => {
+    if (!remoteReady || !hasSupabaseSession() || !session.userId || !/^[0-9a-f-]{36}$/i.test(org.id)) return;
+    let active = true;
+    const refreshTeamMessages = async () => {
+      const rows = await restSelect("team_messages", `company_id=eq.${org.id}&recipient_user_id=eq.${session.userId}&read_at=is.null&order=created_at.desc&limit=50`);
+      if (!active) return;
+      const incoming = new Set(rows.map((item) => item.id));
+      if (seenTeamMessages.current && typeof Notification !== "undefined" && Notification.permission === "granted" && document.visibilityState !== "visible") {
+        const latest = rows.find((item) => !seenTeamMessages.current.has(item.id));
+        if (latest) { try { new Notification("Nova mensagem no GesTI", { body: latest.body.slice(0, 120), tag: `gesti-message-${latest.id}` }); } catch { /* O navegador pode limitar alertas em segundo plano. */ } }
+      }
+      seenTeamMessages.current = incoming;
+      setTeamMessages(rows);
+    };
+    void refreshTeamMessages().catch((error) => void captureAppError(error, org.id));
+    const timer = window.setInterval(() => void refreshTeamMessages().catch((error) => void captureAppError(error, org.id)), 8000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [remoteReady, org.id, session.userId]);
+
+  const changeDashboardMetrics = (metrics) => {
+    setDashboardMetrics(metrics);
+    if (hasSupabaseSession() && session.userId && /^[0-9a-f-]{36}$/i.test(org.id)) void restInsert("member_preferences", { company_id: org.id, user_id: session.userId, dashboard_metrics: metrics }, { upsert: true, onConflict: "company_id,user_id", returnRepresentation: false }).catch((error) => void captureAppError(error, org.id));
+  };
 
   useEffect(() => {
     document.body.classList.toggle("report-printing", modal === "report");
@@ -105,8 +156,8 @@ function Workspace({ store, theme, toggleTheme }) {
       restSelect("tickets", filters), restSelect("suppliers", filters), restSelect("category_budgets", filters),
       restSelect("reply_templates", filters), restSelect("memberships", filters),
       restSelect("technician_presence", filters), restSelect("onboarding_progress", `${filters}&user_id=eq.${session.userId}`),
-      restSelect("workspace_records", filters), restSelect("companies", `id=eq.${org.id}`),
-    ]).then(([remoteTickets, remoteSuppliers, remoteBudgets, remoteReplies, remoteMembers, remotePresence, onboarding, records, companyRows]) => {
+      restSelect("workspace_records", filters), restSelect("companies", `id=eq.${org.id}`), restSelect("company_roles", filters),
+    ]).then(([remoteTickets, remoteSuppliers, remoteBudgets, remoteReplies, remoteMembers, remotePresence, onboarding, records, companyRows, remoteRoles]) => {
       if (!active) return;
       const presenceByUser = new Map(remotePresence.map((row) => [row.user_id, row]));
       const remotePeople = remoteMembers.map((member) => ({ id: member.user_id, name: member.display_name, email: member.user_id === session.userId ? session.email : "", role: member.role, capabilities: member.capabilities || {}, ...(presenceByUser.has(member.user_id) ? { available: presenceByUser.get(member.user_id).available, maxActiveTickets: presenceByUser.get(member.user_id).max_active_tickets } : { available: member.available === true, maxActiveTickets: member.max_active_tickets || 3 }) }));
@@ -142,7 +193,9 @@ function Workspace({ store, theme, toggleTheme }) {
         logout();
         return;
       }
-      setData((current) => ({ ...current, ...(remoteCompany ? { company: { ...current.company, ...(remoteCompany.profile_data || {}), ...(remoteCompany.branding || {}), name: remoteCompany.name } } : {}), people: remotePeople, tickets: mappedTickets, suppliers: remoteSuppliers.map((row) => ({ id: `FOR-${row.id}`, remoteId: row.id, name: row.name, email: row.email || "", phone: row.phone || "", active: row.active, createdAt: row.created_at })), budgets: remoteBudgets.map((row) => ({ id: row.id, category: row.category, month: row.month, amount: Number(row.limit_amount) })), replyTemplates: remoteReplies.map((row) => ({ id: row.id, remoteId: row.id, title: row.title, body: row.body, active: row.active })), clients: grouped.get("clients"), inventory: grouped.get("inventory"), services: grouped.get("services"), expenses: grouped.get("expenses"), invoices: grouped.get("invoices"), movementLog: grouped.get("movements"), onboardingComplete: Boolean(onboarding[0]?.completed_at) }));
+      const visibleRemoteRoles = remoteRoles.filter((item) => ROLES.includes(item.name) || !item.is_default || remoteMembers.some((member) => member.role === item.name));
+      const remoteRolePermissions = Object.fromEntries(visibleRemoteRoles.map((item) => [item.name, Object.keys(item.capabilities || {}).filter((key) => item.capabilities[key] === true)]));
+      setData((current) => ({ ...current, roleCatalog: visibleRemoteRoles.map((item) => ({ name: item.name, isDefault: item.is_default })), rolePermissions: remoteRolePermissions, ...(remoteCompany ? { company: { ...current.company, ...(remoteCompany.profile_data || {}), ...(remoteCompany.branding || {}), name: remoteCompany.name } } : {}), people: remotePeople, tickets: mappedTickets, suppliers: remoteSuppliers.map((row) => ({ id: `FOR-${row.id}`, remoteId: row.id, name: row.name, email: row.email || "", phone: row.phone || "", active: row.active, createdAt: row.created_at })), budgets: remoteBudgets.map((row) => ({ id: row.id, category: row.category, month: row.month, amount: Number(row.limit_amount) })), replyTemplates: remoteReplies.map((row) => ({ id: row.id, remoteId: row.id, title: row.title, body: row.body, active: row.active })), clients: grouped.get("clients"), inventory: grouped.get("inventory"), services: grouped.get("services"), expenses: grouped.get("expenses"), invoices: grouped.get("invoices"), movementLog: grouped.get("movements"), onboardingComplete: Boolean(onboarding[0]?.completed_at) }));
       if (onboarding[0]?.completed_at) setTourStep(null);
       setRemoteReady(true);
     }).catch((error) => { if (active) { setRemoteError(error.message || "Não foi possível carregar os dados da empresa."); void captureAppError(error, org.id); } });
@@ -194,12 +247,12 @@ function Workspace({ store, theme, toggleTheme }) {
 
   const company = org.company;
   const people = org.people;
-  const tickets = org.tickets || [];
+  const tickets = org.tickets || EMPTY_LIST;
   const inventory = org.inventory;
   const expenses = org.expenses;
-  const invoices = org.invoices || [];
-  const services = org.services || [];
-  const movements = org.movementLog || [];
+  const invoices = org.invoices || EMPTY_LIST;
+  const services = org.services || EMPTY_LIST;
+  const movements = org.movementLog || EMPTY_LIST;
   const clients = useMemo(() => {
     const byName = new Map((Array.isArray(org.clients) ? org.clients : []).filter(Boolean).map((client) => [String(client.name || "").toLowerCase(), { ...client, tickets: [], invoices: [] }]));
     for (const ticket of tickets) {
@@ -226,14 +279,12 @@ function Workspace({ store, theme, toggleTheme }) {
   const pendingExpenses = can("viewCosts") ? expenses.filter((expense) => expense.status === "Pendente") : [];
   const approvedTotal = can("viewCosts") ? expenses.filter((expense) => expense.status === "Aprovada").reduce((sum, expense) => sum + Number(expense.amount), 0) : 0;
 
-  const pageCapabilities = { Clientes: ["manageClients"], Estoque: ["manageStock"], Custos: ["viewCosts"], Empresa: ["managePeople", "manageCompany"], Logs: ["clearLogs"] };
-  const pagesForRole = PAGES.filter((name) => {
+  const pagesForRole = useMemo(() => PAGES.filter((name) => {
     if (name === "Notas fiscais") return can("viewCosts") || can("claimTickets");
-    const baseAccess = (ROLE_PAGES[role] || PAGES).includes(name);
-    const capabilities = pageCapabilities[name] || [];
-    const overrides = capabilities.filter((capability) => Object.hasOwn(currentPerson?.capabilities || {}, capability));
-    return overrides.length ? capabilities.some(can) : baseAccess;
-  });
+    const baseAccess = (ROLE_PAGES[role] || ["Visão geral", "Chamados", "Equipe", "Sobre"]).includes(name);
+    const capabilities = PAGE_CAPABILITIES[name] || [];
+    return capabilities.length ? capabilities.some(can) : baseAccess;
+  }), [role, can]);
   useEffect(() => {
     if (!pagesForRole.includes(page)) navigateToPage("Visão geral");
   }, [page, pagesForRole, navigateToPage]);
@@ -253,6 +304,7 @@ function Workspace({ store, theme, toggleTheme }) {
     ...pendingTickets.filter((ticket) => !overdueTickets.includes(ticket) && !dueSoonTickets.includes(ticket)).map((ticket) => ({ id: `t-${ticket.id}`, target: "Chamados", icon: "ticket", tone: CRITICAL_PRIORITIES.includes(ticket.priority) ? "amber" : "blue", title: `Chamado ${ticket.id} · prioridade ${ticket.priority}`, message: ticket.title })),
     ...(role === "Funcionário" ? [] : lowStock.slice(0, 3).map((item) => ({ id: `i-${item.id}`, target: "Estoque", icon: "warning", tone: "amber", title: "Estoque no nível mínimo", message: `${item.name} · ${item.quantity} un. restantes` }))),
     ...pendingExpenses.slice(0, 3).map((expense) => ({ id: `e-${expense.id}`, target: "Custos", icon: "receipt", tone: "violet", title: "Despesa aguardando aprovação", message: `${expense.title} · ${money(expense.amount)}` })),
+    ...teamMessages.map((message) => ({ id: `team-${message.id}`, target: "Equipe", icon: "chat", tone: "blue", title: `Mensagem de ${people.find((member) => member.id === message.sender_user_id)?.name || "colega"}`, message: message.body })),
   ];
   const unreadCount = alerts.filter((alert) => !readAlerts.includes(alert.id)).length;
   const badgeCounts = { Chamados: pendingTickets.length, Estoque: lowStock.length, Custos: pendingExpenses.length };
@@ -734,12 +786,21 @@ function Workspace({ store, theme, toggleTheme }) {
   const addExpense = (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
+    const kind = String(data.get("kind") || "Despesa");
+    const supplierQuotes = [1, 2, 3].flatMap((index) => {
+      const supplier = String(data.get(`quoteSupplier${index}`) || "").trim();
+      const amount = Number(data.get(`quoteAmount${index}`));
+      return supplier && amount > 0 ? [{ supplier, amount }] : [];
+    });
     setExpenses((items) => [{
       id: nextId("PC", expenses), title: data.get("title"), category: data.get("category"),
       amount: Number(data.get("amount")), requester: currentPerson.name, date: today(), status: "Pendente", notes: data.get("notes"),
+      kind, supplier: String(data.get("supplier") || "").trim(), costCenter: String(data.get("costCenter") || "").trim(),
+      dueDate: data.get("dueDate") || "", paymentMethod: String(data.get("paymentMethod") || ""),
+      paymentStatus: "Aguardando aprovação", ...(kind === "Compra" ? { purchaseStage: "Solicitada", supplierQuotes, purchaseOrder: String(data.get("purchaseOrder") || "").trim() } : {}),
     }, ...items]);
     setModal("");
-    notify({ message: "A despesa entrou na fila de aprovação.", title: "Despesa enviada" });
+    notify({ message: kind === "Compra" ? "A compra entrou na fila de aprovação." : "A despesa entrou na fila de aprovação.", title: kind === "Compra" ? "Compra solicitada" : "Despesa enviada" });
   };
 
   const setExpenseStatus = (id, status) => {
@@ -748,32 +809,76 @@ function Workspace({ store, theme, toggleTheme }) {
     logEvent(org.id, currentPerson.name, `Despesa ${status.toLowerCase()}`, expense ? `${expense.id} — ${expense.title} (${money(expense.amount)})` : id, status === "Aprovada" ? "success" : "warning");
   };
 
+  const setExpensePaymentStatus = (id, paymentStatus) => {
+    if (!can("approve")) return;
+    const paidAt = paymentStatus === "Paga" ? today() : "";
+    setExpenses((items) => items.map((expense) => expense.id === id ? { ...expense, paymentStatus, paidAt } : expense));
+    const expense = expenses.find((item) => item.id === id);
+    logEvent(org.id, currentPerson.name, paymentStatus === "Paga" ? "Conta paga" : "Pagamento reaberto", expense ? `${expense.id} — ${expense.title} (${money(expense.amount)})` : id, paymentStatus === "Paga" ? "success" : "info");
+    void writeAuditEvent(org.id, session.userId, paymentStatus === "Paga" ? "expense.payment_paid" : "expense.payment_reopened", "expense", id, { paymentStatus, paidAt });
+  };
+
+  const updatePurchaseStage = (id, changes) => {
+    if (!can("approve")) return;
+    setExpenses((items) => items.map((expense) => expense.id === id ? { ...expense, ...changes, stageUpdatedAt: currentDateTime(), stageUpdatedBy: currentPerson.name } : expense));
+    const expense = expenses.find((item) => item.id === id);
+    if (expense && changes.purchaseStage) {
+      logEvent(org.id, currentPerson.name, "Etapa da compra", `${expense.id} — ${expense.title}: ${changes.purchaseStage}`, "info");
+      void writeAuditEvent(org.id, session.userId, "purchase.stage_updated", "expense", id, { stage: changes.purchaseStage });
+    }
+  };
+
+  const setInvoicePaymentStatus = async (invoice, paymentStatus) => {
+    if (!can("approve")) return;
+    const updated = { ...invoice, paymentStatus, paidAt: paymentStatus === "Recebida" ? today() : "" };
+    try { await persistWorkspaceRow("invoices", updated); }
+    catch (error) { notify({ tone: "info", title: "Recebimento não atualizado", message: error.message || "Tente novamente." }); return; }
+    setInvoices((items) => items.map((item) => item.id === invoice.id ? updated : item));
+    logEvent(org.id, currentPerson.name, paymentStatus === "Recebida" ? "Recebimento registrado" : "Recebimento reaberto", `${invoice.number}/${invoice.series} · ${money(invoice.total)}`, paymentStatus === "Recebida" ? "success" : "info");
+    void writeAuditEvent(org.id, session.userId, paymentStatus === "Recebida" ? "invoice.payment_received" : "invoice.payment_reopened", "invoice", invoice.id, { paymentStatus, paidAt: updated.paidAt });
+  };
+
   const addPerson = async (event) => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const name = data.get("name");
-    const email = data.get("email");
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const name = String(data.get("name") || "").trim();
+    const email = String(data.get("email") || "").trim().toLowerCase();
+    const roleName = String(data.get("role") || "");
+    const passwordMode = String(data.get("password_mode") || "admin-assigned");
+    const password = String(data.get("password") || "");
+    if (passwordMode !== "first-login" && (password.length < 8 || password !== String(data.get("confirm_password") || ""))) {
+        notify({ tone: "info", title: "Confira a senha", message: "A senha deve ter pelo menos 8 caracteres e os dois campos precisam ser iguais." });
+      return false;
+    }
     if (people.some((person) => String(person.email || "").toLowerCase() === String(email).toLowerCase())) {
       notify({ tone: "info", message: "Este e-mail já possui acesso ao workspace." });
-      return;
+      return false;
     }
     if (hasSupabaseSession() && /^[0-9a-f-]{36}$/i.test(org.id)) {
       try {
-        const [invite] = await restInsert("company_member_invites", { company_id: org.id, email: String(email).trim().toLowerCase(), display_name: String(name).trim(), role: data.get("role"), capabilities: {}, created_by: session.userId });
-        if (!invite?.invite_token) throw new Error("O Supabase não retornou o token do convite.");
-        setInviteUrl(`${window.location.origin}${window.location.pathname}#invite=${invite.invite_token}`);
-        logEvent(org.id, currentPerson.name, "Convite criado", `${name} · ${email}`, "info");
-        setModal("invite-created");
-        return;
+        if (passwordMode === "first-login") {
+          const accessCode = createEmployeeAccessCode();
+          const claimCodeHash = await hashAccessCode(accessCode);
+          await restRpc("register_employee_first_login", { p_company_id: org.id, p_email: email, p_display_name: name, p_role: roleName, p_claim_code_hash: claimCodeHash });
+          logEvent(org.id, currentPerson.name, "Funcionário preparado para primeiro acesso", `${name} · ${email}`, "info");
+          notify({ tone: "success", title: "Cadastro realizado", message: `Passe o código de primeiro acesso diretamente a ${name}.` });
+          return { accessCode };
+        }
+        const created = await supabaseRegisterEmployee({ companyId: org.id, email, displayName: name, role: roleName, password });
+        setData((current) => ({ ...current, people: [...current.people.filter((member) => member.id !== created.userId), { id: created.userId, name, email, role: roleName, capabilities: {}, available: false }] }));
+        logEvent(org.id, currentPerson.name, "Funcionário cadastrado", `${name} · ${email} · senha inicial definida`, "info");
+        notify({ tone: "success", title: "Funcionário cadastrado", message: `${name} já pode entrar com o e-mail e a senha inicial que você definiu.` });
+          return true;
       } catch (error) {
         void captureAppError(error, org.id);
-        notify({ tone: "info", title: "Não foi possível criar o convite", message: error.message || "Confira suas permissões e tente novamente." });
-        return;
+        notify({ tone: "info", title: "Não foi possível cadastrar", message: error.message || "Confira suas permissões e tente novamente." });
+        return false;
       }
     }
-    await addPersonWithAccess({ id: nextId("U", people), name, email, role: data.get("role"), password: data.get("password") || "acme123" });
-    setModal("");
-    notify({ tone: "success", message: `${name} agora faz parte da equipe e já pode fazer login.`, title: "Pessoa adicionada" });
+    await addPersonWithAccess({ id: nextId("U", people), name, email, role: roleName, password });
+    notify({ tone: "success", message: `${name} agora faz parte da equipe e já pode fazer login.`, title: "Funcionário cadastrado" });
+    return true;
   };
 
   /* Redefinição de senha: "own" troca a própria; id numérico reseta a de
@@ -849,17 +954,42 @@ function Workspace({ store, theme, toggleTheme }) {
     logEvent(org.id, currentPerson.name, "Disponibilidade TI", `${person.name}: ${available ? "disponível" : "indisponível"}`, "info");
   };
 
-  const updateCapabilities = async (personId, capabilities) => {
-    if (!can("managePeople")) return false;
-    const person = people.find((item) => item.id === personId);
-    if (hasSupabaseSession() && /^[0-9a-f-]{36}$/i.test(org.id) && /^[0-9a-f-]{36}$/i.test(personId)) {
-      try { await restRpc("update_member_capabilities", { p_company_id: org.id, p_user_id: personId, p_capabilities: capabilities }); }
-      catch (error) { void captureAppError(error, org.id); notify({ tone: "info", title: "Capacidades não atualizadas", message: error.message || "O acesso permanece protegido pelas permissões atuais." }); return false; }
-    }
-    setData((current) => ({ ...current, people: current.people.map((item) => item.id === personId ? { ...item, capabilities } : item) }));
-    logEvent(org.id, currentPerson.name, "Capacidades atualizadas", person?.name || personId, "warning");
-    void writeAuditEvent(org.id, session.userId, "membership.capabilities_updated", "membership", personId, { capabilities });
-    return true;
+  const saveRole = async (roleValue) => {
+    if (!can("manageCompany")) return false;
+    if (roleValue.existing || roleValue.remove || roleValue.renameTo) return false;
+    // `is_default` é definido pelo padrão do banco e não faz parte do GRANT INSERT.
+    const payload = { company_id: org.id, name: roleValue.name, capabilities: roleValue.capabilities };
+    try {
+      if (hasSupabaseSession() && /^[0-9a-f-]{36}$/i.test(org.id)) {
+        const inserted = await restInsert("company_roles", payload);
+        if (!inserted?.some((item) => item.name === roleValue.name)) throw new Error("O banco não confirmou a criação do cargo.");
+        const roleRows = await restSelect("company_roles", `company_id=eq.${org.id}`);
+        if (!roleRows.some((item) => item.name === roleValue.name)) throw new Error("O cargo foi enviado, mas não apareceu na lista da empresa.");
+        const visibleRoles = roleRows.filter((item) => ROLES.includes(item.name) || !item.is_default || people.some((member) => member.role === item.name));
+        setData((current) => ({ ...current, roleCatalog: visibleRoles.map((item) => ({ name: item.name, isDefault: item.is_default })), rolePermissions: Object.fromEntries(visibleRoles.map((item) => [item.name, Object.keys(item.capabilities || {}).filter((key) => item.capabilities[key] === true)])) }));
+      } else {
+        setData((current) => {
+          const names = current.roleCatalog || ROLES.map((name) => ({ name, isDefault: true }));
+          const nextNames = [...names, { name: roleValue.name, isDefault: false }];
+          const nextPermissions = { ...(current.rolePermissions || {}), [roleValue.name]: Object.keys(roleValue.capabilities).filter((key) => roleValue.capabilities[key]) };
+          return { ...current, roleCatalog: nextNames, rolePermissions: nextPermissions };
+        });
+      }
+      notify({ tone: "success", title: "Novo cargo criado", message: `${roleValue.name} está pronto para ser atribuído à equipe.` });
+      return true;
+    } catch (error) { notify({ tone: "info", title: "Cargo não salvo", message: error.message || "Confira seu acesso e tente novamente." }); return false; }
+  };
+
+  const setMemberRole = async (personId, nextRole) => {
+    if (!can("manageCompany")) return;
+    try {
+      if (hasSupabaseSession() && /^[0-9a-f-]{36}$/i.test(org.id)) {
+        await restRpc("set_member_role", { p_company_id: org.id, p_user_id: personId, p_role: nextRole });
+        const [savedMember] = await restSelect("memberships", `company_id=eq.${org.id}&user_id=eq.${personId}`);
+        if (savedMember?.role !== nextRole) throw new Error("O banco não confirmou a alteração do cargo.");
+      }
+      setData((current) => ({ ...current, people: current.people.map((item) => item.id === personId ? { ...item, role: nextRole, capabilities: {} } : item) }));
+    } catch (error) { notify({ tone: "info", title: "Cargo não alterado", message: error.message || "Confira as permissões do cargo." }); }
   };
 
   const removeCompanyMember = (personId) => {
@@ -896,13 +1026,25 @@ function Workspace({ store, theme, toggleTheme }) {
     if (!can("manageCompany")) return;
     const form = new FormData(event.currentTarget);
     const primaryColor = String(form.get("primaryColor") || "#2c666e");
+    const backgroundColor = String(form.get("backgroundColor") || "#f4f7f4");
+    const surfaceColor = String(form.get("surfaceColor") || "#ffffff");
+    const textColor = String(form.get("textColor") || "#1f363d");
     const logoUrl = String(form.get("logoUrl") || "").trim();
-    if (!/^#[0-9a-f]{6}$/i.test(primaryColor)) return notify({ tone: "info", title: "Cor inválida", message: "Escolha uma cor hexadecimal válida." });
+    if (![primaryColor, backgroundColor, surfaceColor, textColor].every((color) => /^#[0-9a-f]{6}$/i.test(color))) return notify({ tone: "info", title: "Cor inválida", message: "Escolha cores hexadecimais válidas." });
     if (logoUrl && !/^https:\/\//i.test(logoUrl)) return notify({ tone: "info", title: "URL de logo inválida", message: "Use um endereço HTTPS para a imagem." });
-    setCompanyData((current) => ({ ...current, primaryColor, logoUrl }));
-    if (hasSupabaseSession() && /^[0-9a-f-]{36}$/i.test(org.id)) void restUpdate("companies", `id=eq.${org.id}`, { branding: { primaryColor, logoUrl } }).catch((error) => void captureAppError(error, org.id));
+    setCompanyData((current) => ({ ...current, primaryColor, backgroundColor, surfaceColor, textColor, logoUrl }));
+    if (hasSupabaseSession() && /^[0-9a-f-]{36}$/i.test(org.id)) void restUpdate("companies", `id=eq.${org.id}`, { branding: { primaryColor, backgroundColor, surfaceColor, textColor, logoUrl } }).catch((error) => void captureAppError(error, org.id));
     logEvent(org.id, currentPerson.name, "Identidade visual atualizada", company.name, "info");
     notify({ tone: "success", title: "Identidade visual salva", message: "A cor principal da empresa foi atualizada." });
+  };
+
+  const resetBranding = () => {
+    if (!can("manageCompany")) return;
+    const branding = { primaryColor: "#2c666e", backgroundColor: "#f4f7f4", surfaceColor: "#ffffff", textColor: "#1f363d", logoUrl: "" };
+    setCompanyData((current) => ({ ...current, ...branding }));
+    if (hasSupabaseSession() && /^[0-9a-f-]{36}$/i.test(org.id)) void restUpdate("companies", `id=eq.${org.id}`, { branding }).catch((error) => void captureAppError(error, org.id));
+    logEvent(org.id, currentPerson.name, "Identidade visual redefinida", company.name, "info");
+    notify({ tone: "success", title: "Identidade visual restaurada", message: "As cores e o logo voltaram ao padrão GesTI." });
   };
 
   const exportAccountingCsv = () => {
@@ -928,19 +1070,21 @@ function Workspace({ store, theme, toggleTheme }) {
   const pageIntro = {
     "Visão geral": ["Central de operações", "Acompanhe o que está acontecendo no setor de TI."],
     Chamados: ["Central de chamados", "Urgência classificada automaticamente, fila crítica e catálogo de serviços com valores aplicados aos chamados."],
+    Equipe: ["Intra-equipe", "Chat privado e calendário compartilhado da empresa."],
+    Funcionários: ["Cadastro de funcionários", "Convide pessoas para fazerem parte da equipe da empresa."],
     Clientes: ["Cadastro de clientes", "Contatos e histórico de chamados e documentos em um só lugar."],
     Estoque: ["Estoque de TI", "Componentes, níveis mínimos e valores para documentos demonstrativos."],
     Registro: ["Registro geral", "Linha do tempo de documentos e chamados, com seus vínculos."],
-    Custos: ["Métricas de gastos", "Gráficos e indicadores para controlar os custos de TI."],
+    Custos: ["Financeiro e compras", "Acompanhe fluxo financeiro, fornecedores, vencimentos, compras e orçamento em um só lugar."],
     "Notas fiscais": ["Documentos de demonstração", "Registros sem valor fiscal, com itens e valores do estoque."],
     Logs: ["Eventos do sistema", "Histórico local das ações realizadas neste navegador."],
     Empresa: ["Empresa e equipe", "Mantenha os dados da organização e a hierarquia de acesso."],
     Sobre: ["Sobre o GesTI", "Gestão de tecnologia da informação com clareza e responsabilidade."],
   }[page];
 
-  if (!remoteReady) return <div className="boot-screen"><span className="brand-mark brand-mark-lg">G</span><span className="boot-hint">{remoteError || "Carregando dados da empresa…"}</span>{remoteError && <Button onClick={() => window.location.reload()}>Tentar novamente</Button>}</div>;
+  if (!remoteReady) return <div className="boot-screen"><img alt="" aria-hidden="true" className="brand-symbol brand-symbol-lg" src="/gesti-mark-primary.png" /><span className="boot-hint">{remoteError || "Carregando dados da empresa…"}</span>{remoteError && <Button onClick={() => window.location.reload()}>Tentar novamente</Button>}</div>;
   return (
-    <div className={`app-shell ${sideOpen ? "shell-expanded" : "shell-collapsed"}`} style={{ "--accent": company.primaryColor || "#2c666e", "--accent-strong": theme === "dark" ? "#90ddf0" : "#07393c", "--focus-ring": company.primaryColor || "#2c666e" }}>
+    <div className={`app-shell ${sideOpen ? "shell-expanded" : "shell-collapsed"}`} style={{ "--accent": company.primaryColor || "#2c666e", "--accent-bright": company.primaryColor || "#2c666e", "--accent-strong": theme === "dark" ? "#90ddf0" : "#07393c", "--focus-ring": company.primaryColor || "#2c666e", "--paper": company.backgroundColor || undefined, "--card": company.surfaceColor || undefined, "--ink": company.textColor || undefined }}>
       <SideBar aberta={sideOpen} aoFechar={() => setSideOpen(false)} aoEntrar={enterSidebar} aoSair={leaveSidebar} aoNavegar={navigate} contagens={badgeCounts} onNotificacoes={() => setNotifyOpen((current) => !current)} onLogout={logout} empresaNome={company.name} paginaAtiva={page} paginas={pagesForRole} backend={session.backend} />
       <AnimatePresence>
         {notifyOpen && (
@@ -977,28 +1121,29 @@ function Workspace({ store, theme, toggleTheme }) {
               <Reveal><div className="page-heading"><div><span className="eyebrow">{company.name} <span className="eyebrow-dot">/</span> {company.department || role}</span><h1>{pageIntro[0]}</h1><p>{pageIntro[1]}</p></div>
                 {page === "Chamados" && <Button onClick={() => setModal("ticket")}><Icon name="plus" size={17} /> Novo chamado</Button>}
                 {page === "Estoque" && can("manageStock") && <Button onClick={() => setModal("inventory")}><Icon name="plus" size={17} /> Adicionar item</Button>}
-                {page === "Custos" && <Button onClick={() => setModal("expense")}><Icon name="plus" size={17} /> Nova despesa</Button>}
+                {page === "Custos" && <Button onClick={() => setModal("expense")}><Icon name="plus" size={17} /> Novo lançamento</Button>}
                 {page === "Notas fiscais" && can("approve") && <Button onClick={() => setInvoiceSignal((signal) => signal + 1)}><Icon name="file" size={17} /> Criar documento de demonstração</Button>}
                 {page === "Visão geral" && can("viewCosts") && <Button onClick={() => setModal("report")} variant="secondary"><Icon name="file" size={16} /> Relatório mensal / PDF</Button>}
-                {page === "Empresa" && can("managePeople") && <Button onClick={() => setModal("person")}><Icon name="plus" size={17} /> Adicionar pessoa</Button>}
               </div></Reveal>
 
-              {page === "Visão geral" && <Suspense fallback={<LoadingPanel />}><LazyOverview approvedTotal={approvedTotal} backupBusy={backupBusy} canBackup={can("backup")} canSeeFinances={can("viewCosts")} company={company} inventory={role === "Funcionário" ? [] : inventory} invoices={role === "Funcionário" ? [] : invoices} lowStock={lowStock} now={now} onBackupExport={exportBackup} onBackupImport={importBackup} onNavigate={navigate} overdueTickets={overdueTickets} pendingExpenses={pendingExpenses} pendingTickets={pendingTickets} personName={currentPerson.name} remoteAuth={session.backend === "supabase"} role={role} tickets={visibleTickets} /></Suspense>}
+              {page === "Visão geral" && <Suspense fallback={<LoadingPanel />}><LazyOverview approvedTotal={approvedTotal} backupBusy={backupBusy} canBackup={can("backup")} canSeeFinances={can("viewCosts")} company={company} dashboardMetrics={dashboardMetrics} onDashboardMetricsChange={changeDashboardMetrics} inventory={role === "Funcionário" ? [] : inventory} invoices={role === "Funcionário" ? [] : invoices} lowStock={lowStock} now={now} onBackupExport={exportBackup} onBackupImport={importBackup} onNavigate={navigate} overdueTickets={overdueTickets} pendingExpenses={pendingExpenses} pendingTickets={pendingTickets} personName={currentPerson.name} remoteAuth={session.backend === "supabase"} role={role} tickets={visibleTickets} /></Suspense>}
               {page === "Visão geral" && role !== "Funcionário" && <details className="overview-team"><summary>Desempenho da equipe e cumprimento de prazos</summary><Suspense fallback={<LoadingPanel />}><LazyTeamMetrics tickets={visibleTickets} /></Suspense></details>}
               {page === "Chamados" && <Suspense fallback={<LoadingPanel />}><LazyTicketsPage canClaim={can("claimTickets")} canManage={can("manageTickets")} canManageReplies={can("manageTickets")} canManageServices={can("manageServices")} canSetCategory={can("claimTickets")} canSetPriority={can("claimTickets")} currentPersonName={currentPerson.name} detail={ticketDetail} invoices={invoices} now={now} onAddComment={addTicketComment} onChangePriority={changeTicketPriority} onChangeStatus={changeTicketStatus} onClaim={claimTicket} onDeclineAssignment={declineAssignment} onDeleteReply={deleteReplyTemplate} onLinkService={linkServiceToTicket} onSaveReply={saveReplyTemplate} onSurvey={submitSatisfaction} onUnlinkService={unlinkServiceFromTicket} query={query} replyTemplates={org.replyTemplates || []} role={role} services={filteredServices} setDetail={setTicketDetail} setQuery={setQuery} tickets={filteredTickets} /></Suspense>}
               {page === "Chamados" && role !== "Funcionário" && <Suspense fallback={<LoadingPanel />}><LazyTeamMetrics tickets={visibleTickets} /></Suspense>}
+              {page === "Equipe" && <Suspense fallback={<LoadingPanel />}><LazyTeamHub canCreateTeamChats={can("createTeamChats")} canManageCalendar={can("manageCalendar")} companyId={org.id} people={people} person={currentPerson} /></Suspense>}
+              {page === "Funcionários" && <Suspense fallback={<LoadingPanel />}><EmployeeRegistration companyName={company.name} onSubmit={addPerson} people={people} remoteAuth={session.backend === "supabase"} roles={(org.roleCatalog?.length ? org.roleCatalog.map((item) => item.name) : ROLES).filter((item) => !["Dono", "Dono da empresa", "Admin"].includes(item))} /></Suspense>}
               {page === "Clientes" && <Suspense fallback={<LoadingPanel />}><LazyCustomersPage canManage={can("manageClients")} clients={clients} remoteAuth={session.backend === "supabase"} onAdd={() => { setClientEditing(null); setModal("client"); }} onEdit={(client) => { setClientEditing(client); setModal("client"); }} onOpenTickets={(name) => { setQuery(name); navigate("Chamados"); }} onToggle={toggleClient} query={query} setQuery={setQuery} /></Suspense>}
               {page === "Estoque" && <Suspense fallback={<LoadingPanel />}><LazyInventoryPage canManage={can("manageStock")} inventory={role === "Funcionário" ? [] : filteredInventory} allInventory={role === "Funcionário" ? [] : inventory} movements={movements} onAdjust={adjustStock} onAddSupplier={addSupplier} onDownload={() => downloadCsv(filteredInventory, "gesti-relatorio-estoque", ["Código", "Componente", "Categoria", "SKU", "Quantidade", "Mínimo", "Custo unitário", "Garantia até"], (item) => [item.id, item.name, item.category, item.sku, item.quantity, item.minimum, item.unitCost, item.warrantyUntil || ""])} onRemoveSupplier={removeSupplier} query={query} setQuery={setQuery} suppliers={org.suppliers || []} /></Suspense>}
-              {page === "Custos" && <Suspense fallback={<LoadingPanel />}><LazyExpensesPage budgets={org.budgets || []} canApprove={can("approve")} expenses={expenses} onSaveBudget={saveBudget} onStatus={setExpenseStatus} role={role} /></Suspense>}
+              {page === "Custos" && <Suspense fallback={<LoadingPanel />}><LazyExpensesPage budgets={org.budgets || []} canApprove={can("approve")} expenses={expenses} invoices={invoices} onInvoicePaymentStatus={setInvoicePaymentStatus} onPaymentStatus={setExpensePaymentStatus} onPurchaseStage={updatePurchaseStage} onSaveBudget={saveBudget} onStatus={setExpenseStatus} role={role} /></Suspense>}
               {page === "Notas fiscais" && <Suspense fallback={<LoadingPanel />}><InvoicePage canIssue={can("approve")} canManageServices={can("manageServices")} clients={clients} company={{ ...company, id: org.id, invoices }} currentPerson={currentPerson} focusInvoiceId={invoiceFocus} inventory={inventory} invoices={filteredInvoices} onAddService={() => setModal("service")} onIssueComplete={issueInvoice} onLinkTicketInvoice={linkTicketInvoice} onFocusHandled={() => setInvoiceFocus("")} onRemoveService={removeService} onToggleService={toggleService} openSignal={invoiceSignal} services={services} setInvoices={setInvoices} tickets={tickets} /></Suspense>}
               {page === "Registro" && <Suspense fallback={<LoadingPanel />}><LazyRegistryPage invoices={invoices} onOpenInvoice={openRegistroInvoice} tickets={tickets} /></Suspense>}
-              {page === "Logs" && <Suspense fallback={<LoadingPanel />}><LazyLogsPage canLog={can("clearLogs")} onClear={() => setModal("logs")} orgId={org.id} /></Suspense>}
-              {page === "Empresa" && <Suspense fallback={<LoadingPanel />}><LazyCompanyPage canManageCompany={can("manageCompany")} canManagePeople={can("managePeople")} company={company} currentPerson={currentPerson} onSave={saveCompany} onSaveBranding={saveBranding} onToggleAvailability={toggleAvailability} onUpdateCapabilities={updateCapabilities} people={people} removePerson={removeCompanyMember} resetPassword={handleResetPassword} role={role} remoteAuth={session.backend === "supabase"} /></Suspense>}
+              {page === "Logs" && <Suspense fallback={<LoadingPanel />}><LazyLogsPage canLog={can("clearLogs")} onClear={() => setModal("logs")} orgId={org.id} remoteAuth={session.backend === "supabase"} /></Suspense>}
+              {page === "Empresa" && <Suspense fallback={<LoadingPanel />}><LazyCompanyPage canManageCompany={can("manageCompany")} canManagePeople={can("managePeople")} company={company} companyId={org.id} currentPerson={currentPerson} onSave={saveCompany} onSaveBranding={saveBranding} onResetBranding={resetBranding} onSaveRole={saveRole} onSetRole={setMemberRole} roleCatalog={org.roleCatalog || []} rolePermissions={rolePermissions} onToggleAvailability={toggleAvailability} people={people} removePerson={removeCompanyMember} resetPassword={handleResetPassword} remoteAuth={session.backend === "supabase"} /></Suspense>}
               {page === "Sobre" && <Suspense fallback={<LoadingPanel />}><LazyAboutPage company={company} /></Suspense>}
             </motion.div>
           </AnimatePresence>
         </div>
-        <footer className="app-footer"><span>GesTI · Gestão de TI · {company.name}</span><span>{session.name} ({role}) · {session.backend === "supabase" ? "Dados sincronizados com Supabase" : "Dados salvos neste navegador"}</span></footer>
+        <footer className="app-footer"><span>GesTI · Gestão de TI · {company.name}</span><span>{session.name} ({role}) · {session.backend === "supabase" ? "Dados sincronizados com Supabase" : "Dados salvos neste navegador"}</span><button className="app-footer-privacy" onClick={() => window.dispatchEvent(new Event("gesti:open-privacy-center"))} type="button">Privacidade e cookies</button></footer>
       </main>
 
       {modal === "service" && <Modal onClose={() => setModal("")} title="Novo serviço do catálogo"><form className="form-grid" onSubmit={addService}><Field className="field-full" label="Nome do serviço"><input autoFocus name="name" placeholder="Ex.: Remoção de vírus e otimização" required /></Field><Field label="Categoria"><select name="category"><option>Software</option><option>Hardware</option><option>Rede</option><option>Suporte</option><option>Outro</option></select></Field><Field label="Preço (R$)"><input min="0" name="price" required step="0.01" type="number" /></Field><Field className="field-full" label="Descrição"><textarea maxLength="300" name="description" placeholder="O que está incluído neste serviço..." rows="3" /></Field><div className="form-actions"><Button onClick={() => setModal("")} variant="secondary">Cancelar</Button><Button type="submit">Salvar serviço</Button></div></form></Modal>}
@@ -1006,9 +1151,7 @@ function Workspace({ store, theme, toggleTheme }) {
       {modal === "ticket" && <Modal onClose={() => setModal("")} title="Abrir chamado"><form className="form-grid" onSubmit={addTicket}><Field className="field-full" label="Assunto"><input autoFocus maxLength="100" name="title" placeholder="Ex.: Computador não liga" required /></Field><Field className="field-full" label="Cliente relacionado"><select defaultValue={currentPerson.name} name="customerName"><option value={currentPerson.name}>{currentPerson.name} (solicitante)</option>{(role === "Funcionário" ? [] : clients).filter((client) => client.name !== currentPerson.name && client.active !== false).map((client) => <option key={client.id || client.name} value={client.name}>{client.name}{client.company ? ` · ${client.company}` : ""}</option>)}</select></Field>{can("claimTickets") && <Field label="Categoria (TI)"><select name="category"><option>Hardware</option><option>Software</option><option>Rede</option><option>Acesso</option><option>Outro</option></select></Field>}<Field className="field-full" label="Descreva o problema"><textarea maxLength="500" name="description" placeholder="Conte o que aconteceu, desde quando e o que você já tentou." required rows="4" /></Field><div className="field-full auto-priority-note"><Icon name="spark" size={14} /> O sistema estima a prioridade e o prazo. Descreva o impacto e quantas pessoas foram afetadas.</div>{can("claimTickets") && <Field className="field-full" label="Ajuste manual de prioridade (opcional)"><select name="priorityOverride" defaultValue=""><option value="">Manter classificação automática</option>{PRIORITY_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}</select></Field>}<div className="form-actions"><Button onClick={() => setModal("")} variant="secondary">Cancelar</Button><Button type="submit">Registrar chamado</Button></div></form></Modal>}
       {modal === "client" && <Modal onClose={() => { setModal(""); setClientEditing(null); }} title={clientEditing ? "Editar cadastro de cliente" : "Cadastrar cliente"}><form className="form-grid" onSubmit={addClient}><Field className="field-full" label="Nome do cliente ou empresa"><input autoFocus defaultValue={clientEditing?.name || ""} maxLength="120" name="name" readOnly={Boolean(clientEditing)} required /></Field><Field label="Empresa / setor"><input defaultValue={clientEditing?.company || ""} maxLength="100" name="company" /></Field><Field label="CPF / CNPJ"><input defaultValue={clientEditing?.document || ""} maxLength="24" name="document" /></Field><Field label="E-mail"><input defaultValue={clientEditing?.email || ""} maxLength="160" name="email" type="email" /></Field><Field label="Telefone"><input defaultValue={clientEditing?.phone || ""} maxLength="24" name="phone" type="tel" /></Field><Field className="field-full" label="Endereço"><input defaultValue={clientEditing?.address || ""} maxLength="200" name="address" placeholder="Rua, número, bairro, cidade · UF" /></Field><Field className="field-full" label="Observações"><textarea defaultValue={clientEditing?.notes || ""} maxLength="400" name="notes" rows="3" /></Field><div className="form-actions"><Button onClick={() => { setModal(""); setClientEditing(null); }} variant="secondary">Cancelar</Button><Button type="submit">{clientEditing ? "Salvar alterações" : "Salvar cliente"}</Button></div></form></Modal>}
       {modal === "inventory" && <Modal onClose={() => setModal("")} title="Adicionar componente"><form className="form-grid" onSubmit={addInventoryItem}><Field className="field-full" label="Nome do componente"><input autoFocus name="name" placeholder="Ex.: SSD Kingston 1 TB" required /></Field><Field label="Categoria"><select name="category"><option>Armazenamento</option><option>Memória</option><option>Energia</option><option>Rede</option><option>Acessórios</option><option>Periféricos</option><option>Outro</option></select></Field><Field label="SKU / patrimônio"><input name="sku" placeholder="SSD-KNG-1TB" required /></Field><Field label="Quantidade"><input min="0" name="quantity" required type="number" /></Field><Field label="Estoque mínimo"><input min="0" name="minimum" required type="number" /></Field><Field label="Custo unitário (R$)"><input min="0" name="unitCost" required step="0.01" type="number" /></Field><Field label="Garantia até (opcional)"><input name="warrantyUntil" type="date" /></Field><div className="form-actions"><Button onClick={() => setModal("")} variant="secondary">Cancelar</Button><Button type="submit">Salvar componente</Button></div></form></Modal>}
-      {modal === "expense" && <Modal onClose={() => setModal("")} title="Registrar despesa"><form className="form-grid" onSubmit={addExpense}><Field className="field-full" label="Descrição da despesa"><input autoFocus name="title" placeholder="Ex.: Reposição de cabos de rede" required /></Field><Field label="Categoria"><select name="category"><option>Hardware</option><option>Software</option><option>Serviços</option><option>Acessórios</option><option>Outra</option></select></Field><Field label="Valor (R$)"><input min="0.01" name="amount" required step="0.01" type="number" /></Field><Field className="field-full" label="Justificativa"><textarea maxLength="400" name="notes" placeholder="Informe o motivo da compra ou reembolso." rows="3" /></Field><div className="form-actions"><Button onClick={() => setModal("")} variant="secondary">Cancelar</Button><Button type="submit">Enviar para aprovação</Button></div></form></Modal>}
-      {modal === "person" && <Modal onClose={() => setModal("")} title={session.backend === "supabase" ? "Convidar pessoa para a equipe" : "Adicionar pessoa à equipe"}><form className="form-grid" onSubmit={addPerson}><Field className="field-full" label="Nome completo"><input autoFocus name="name" required /></Field><Field className="field-full" label="E-mail de acesso"><input name="email" required type="email" /></Field><Field className="field-full" label="Nível hierárquico"><select name="role">{[...(can("manageCompany") ? ["Admin"] : []), "TI", "Gerência", "Supervisor", "Funcionário"].map((option) => <option key={option}>{option}</option>)}</select></Field>{session.backend === "supabase" ? <p className="field-full quiet-note">Será criado um link seguro, válido por 7 dias. Compartilhe com a pessoa convidada; ela criará a própria senha.</p> : <Field className="field-full" label="Senha inicial (padrão: acme123)"><input name="password" placeholder="Deixe vazio para usar acme123" /></Field>}<div className="form-actions"><Button onClick={() => setModal("")} variant="secondary">Cancelar</Button><Button type="submit">{session.backend === "supabase" ? "Criar convite" : "Adicionar à equipe"}</Button></div></form></Modal>}
-      {modal === "invite-created" && <Modal onClose={() => setModal("")} title="Convite pronto"><div className="tour-content"><p>Envie este link para a pessoa convidada. Ele expira em 7 dias e só funciona com o e-mail cadastrado.</p><Field className="field-full" label="Link do convite"><input readOnly onFocus={(event) => event.target.select()} value={inviteUrl} /></Field><div className="form-actions"><Button onClick={() => setModal("")} variant="secondary">Fechar</Button><Button onClick={async () => { try { await navigator.clipboard.writeText(inviteUrl); notify({ tone: "success", title: "Link copiado", message: "Envie-o à pessoa convidada." }); } catch { notify({ tone: "info", title: "Copie o link", message: "Selecione o link acima e use Ctrl+C." }); } }}>Copiar link</Button></div></div></Modal>}
+      {modal === "expense" && <Modal onClose={() => setModal("")} title="Novo lançamento financeiro"><form className="form-grid" onSubmit={addExpense}><Field label="Tipo de lançamento"><select name="kind"><option>Despesa</option><option>Compra</option></select></Field><Field label="Categoria"><select name="category"><option>Hardware</option><option>Software / SaaS</option><option>Serviços</option><option>Acessórios e peças</option><option>Infraestrutura</option><option>Telecomunicações</option><option>Pessoal</option><option>Impostos e taxas</option><option>Frete e logística</option><option>Deslocamento</option><option>Escritório</option><option>Outra</option></select></Field><Field className="field-full" label="Descrição"><input autoFocus name="title" placeholder="Ex.: Renovação de licença de suporte" required /></Field><Field label="Valor previsto (R$)"><input min="0.01" name="amount" required step="0.01" type="number" /></Field><Field label="Vencimento"><input name="dueDate" type="date" /></Field><Field label="Fornecedor escolhido"><input list="finance-suppliers" name="supplier" placeholder="Nome do fornecedor"/><datalist id="finance-suppliers">{(org.suppliers || []).filter((item) => item.active !== false).map((supplier) => <option key={supplier.id} value={supplier.name}/>)}</datalist></Field><Field label="Centro de custo"><input name="costCenter" placeholder="Ex.: Operações de TI"/></Field><Field label="Forma prevista de pagamento"><select name="paymentMethod"><option value="">A definir</option><option>Pix</option><option>Boleto</option><option>Transferência</option><option>Cartão corporativo</option><option>Dinheiro</option><option>Outra</option></select></Field><Field label="Referência do pedido (opcional)"><input maxLength="60" name="purchaseOrder" placeholder="Número do pedido / orçamento"/></Field><div className="field-full finance-quote-fields"><strong>Cotações de fornecedores (opcional)</strong><div>{[1,2,3].map((index)=><div className="finance-quote-row" key={index}><input aria-label={`Fornecedor cotado ${index}`} name={`quoteSupplier${index}`} placeholder={`Fornecedor ${index}`} /><input aria-label={`Preço cotado ${index}`} min="0.01" name={`quoteAmount${index}`} placeholder="Valor da cotação" step="0.01" type="number" /></div>)}</div></div><Field className="field-full" label="Justificativa e observações"><textarea maxLength="400" name="notes" placeholder="Motivo, condições, itens e observações relevantes." rows="3"/></Field><p className="field-full finance-form-note">O lançamento será enviado para aprovação. Após aprovado, a situação de pagamento pode ser atualizada em Contas a pagar.</p><div className="form-actions"><Button onClick={() => setModal("")} variant="secondary">Cancelar</Button><Button type="submit">Enviar para aprovação</Button></div></form></Modal>}
       {modal === "report" && <Modal onClose={() => setModal("")} title="Relatório mensal" wide><div className="management-report"><header><div><span className="eyebrow">GesTI · {company.name}</span><h2>Resumo de operações</h2><p>Período: {now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</p></div>{company.logoUrl && <img alt="" className="report-logo" src={company.logoUrl} />}</header><div className="report-metrics"><article><span>Chamados abertos</span><strong>{pendingTickets.length}</strong></article><article><span>Chamados resolvidos</span><strong>{tickets.filter((item) => item.status === "Resolvido").length}</strong></article><article><span>Fora do prazo</span><strong>{overdueTickets.length}</strong></article>{can("viewCosts") && <article><span>Despesas aprovadas</span><strong>{money(approvedTotal)}</strong></article>}</div><h3>Atividade recente</h3><table><thead><tr><th>Chamado</th><th>Assunto</th><th>Status</th><th>Responsável</th></tr></thead><tbody>{tickets.slice(0, 12).map((item) => <tr key={item.id}><td>{item.id}</td><td>{item.title}</td><td>{item.status}</td><td>{item.assignee || "—"}</td></tr>)}</tbody></table><p className="report-footnote">Gerado em {now.toLocaleString("pt-BR")} · GesTI</p></div><div className="form-actions report-actions"><Button onClick={() => setModal("")} variant="secondary">Fechar</Button>{can("viewCosts") && <Button onClick={exportAccountingCsv} variant="secondary">Exportar contabilidade CSV</Button>}<Button onClick={() => window.print()}><Icon name="print" size={15} /> Imprimir / salvar PDF</Button></div></Modal>}
       {tourStep !== null && <Modal onClose={finishTour} title="Bem-vindo ao GesTI"><div className="tour-content"><span className="tour-progress">ETAPA {tourStep + 1} DE 4</span><h3>{["Seu espaço de TI", "Atendimento organizado", "Controle de ativos e gastos", "Pronto para começar"][tourStep]}</h3><p>{["Aqui você acompanha solicitações, equipe e indicadores da empresa.", "Chamados recebem prioridade e são atribuídos a técnicos disponíveis, que podem aceitar o atendimento.", "Cadastre equipamentos, fornecedores e limites mensais por categoria.", "Personalize a identidade visual, revise permissões e consulte relatórios sempre que precisar."][tourStep]}</p><div className="form-actions"><Button onClick={finishTour} variant="secondary">Pular tour</Button>{tourStep > 0 && <Button onClick={() => setTourStep((step) => step - 1)} variant="secondary">Voltar</Button>}<Button onClick={() => tourStep === 3 ? finishTour() : setTourStep((step) => step + 1)}>{tourStep === 3 ? "Começar" : "Próximo"}</Button></div></div></Modal>}
       <AssistantChat companyId={org.id} enabled={session.backend === "supabase" && hasSupabaseSession() && /^[0-9a-f-]{36}$/i.test(org.id)} personName={currentPerson.name} />
@@ -1034,11 +1177,15 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  if (!store.seeded || !booted) return <div className="boot-screen"><span className="brand-mark brand-mark-lg">G</span><span className="boot-hint">Carregando GesTI…</span></div>;
+  if (!store.seeded || !booted) return <div className="boot-screen"><img alt="" aria-hidden="true" className="brand-symbol brand-symbol-lg" src="/gesti-mark-primary.png" /><span className="boot-hint">Carregando Gesti…</span></div>;
 
-  if (!store.session || !store.org) return <AuthScreen onLoginFailed={() => setLoginWelcome(false)} onLoginStart={() => setLoginWelcome(true)} store={store} />;
-
-  return <><Workspace key={store.session.orgId} store={store} theme={theme} toggleTheme={toggleTheme} />{loginWelcome && <LoginWelcome onComplete={finishLoginWelcome} />}</>;
+  const loginScreen = !store.session || !store.org;
+  const content = loginScreen
+    ? <AuthScreen onLoginFailed={() => setLoginWelcome(false)} onLoginStart={() => setLoginWelcome(true)} store={store} />
+    : store.session.requiresPasswordSetup
+      ? <Suspense fallback={<div className="boot-screen"><img alt="" aria-hidden="true" className="brand-symbol brand-symbol-lg" src="/gesti-mark-primary.png" /><span className="boot-hint">Preparando seu primeiro acesso…</span></div>}><FirstLoginPassword onLogout={store.logout} onSubmit={async (password) => { await supabaseUpdateCurrentPassword(password); await store.completeEmployeePasswordSetup(); }} /></Suspense>
+      : <><Workspace key={store.session.orgId} store={store} theme={theme} toggleTheme={toggleTheme} />{loginWelcome && <LoginWelcome onComplete={finishLoginWelcome} />}</>;
+  return <PrivacyControls loginScreen={loginScreen}>{content}</PrivacyControls>;
 }
 
 export { ToastProvider } from "./shared.jsx";

@@ -186,10 +186,18 @@ export function TeamMetrics({ tickets }) {
 }
 
 /* Visão geral: herói, indicadores e painéis resumo. */
-export function Overview({ tickets, overdueTickets, lowStock = [], pendingExpenses = [], onNavigate, company, personName, role, canSeeFinances, canBackup, onBackupExport, onBackupImport, backupBusy, remoteAuth = false }) {
+export function Overview({ tickets, overdueTickets, lowStock = [], pendingExpenses = [], onNavigate, company, personName, role, canSeeFinances, canBackup, onBackupExport, onBackupImport, backupBusy, remoteAuth = false, dashboardMetrics = ["open", "overdue", "processing"], onDashboardMetricsChange = () => {} }) {
   const openTickets = tickets.filter((ticket) => ticket.status === "Aberto").length;
   const processingTickets = tickets.filter((ticket) => ticket.status === "Em processamento").length;
   const recentTickets = [...tickets].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 4);
+  const [editingMetrics, setEditingMetrics] = useState(false);
+  const metricCatalog = [
+    { id: "open", label: "Aguardando atendimento", value: openTickets, note: "Chamados em aberto", icon: "ticket", tone: "violet", page: "Chamados" },
+    { id: "overdue", label: "Chamados fora do prazo", value: overdueTickets.length, note: "Além do prazo definido pela prioridade", icon: "clock", tone: "amber", page: "Chamados" },
+    { id: "processing", label: "Em atendimento", value: processingTickets, note: "Chamados em andamento", icon: "check", tone: "green", page: "Chamados" },
+    { id: "stock", label: "Itens para reposição", value: lowStock.length, note: "Abaixo do estoque mínimo", icon: "box", tone: "amber", page: "Estoque" },
+    ...(canSeeFinances ? [{ id: "expenses", label: "Despesas em análise", value: pendingExpenses.length, note: "Aguardando aprovação", icon: "receipt", tone: "blue", page: "Custos" }] : []),
+  ];
 
   return (
     <>
@@ -206,10 +214,10 @@ export function Overview({ tickets, overdueTickets, lowStock = [], pendingExpens
           </div>
         </div>
       </section></Reveal>
+      <div className="metric-settings-row"><span>Indicadores da sua tela inicial</span><button className="text-link" onClick={() => setEditingMetrics((value) => !value)} type="button"><Icon name="sliders" size={15}/>{editingMetrics?"Concluir":"Personalizar"}</button></div>
+      {editingMetrics&&<div className="metric-picker">{metricCatalog.map((metric)=><label className="checkbox-field" key={metric.id}><input checked={dashboardMetrics.includes(metric.id)} onChange={(event)=>onDashboardMetricsChange(event.target.checked?[...new Set([...dashboardMetrics,metric.id])]:dashboardMetrics.filter((item)=>item!==metric.id))} type="checkbox"/><span>{metric.label}</span></label>)}</div>}
       <section aria-label="Indicadores principais" className="metric-grid">
-        <button className="metric-card" onClick={() => onNavigate("Chamados")} type="button"><span className="metric-icon metric-violet"><Icon name="ticket" size={19} /></span><span className="metric-label">Aguardando atendimento</span><strong className="metric-value"><CountUp value={openTickets} /></strong><span className="metric-note">Chamados em aberto</span><span className="metric-arrow"><Icon name="arrow" size={15} /></span></button>
-        <button className="metric-card" onClick={() => onNavigate("Chamados")} type="button"><span className="metric-icon metric-amber"><Icon name="clock" size={19} /></span><span className="metric-label">Chamados fora do prazo</span><strong className="metric-value"><CountUp value={overdueTickets.length} /></strong><span className="metric-note">Além do prazo definido pela prioridade</span><span className="metric-arrow"><Icon name="arrow" size={15} /></span></button>
-        <button className="metric-card" onClick={() => onNavigate("Chamados")} type="button"><span className="metric-icon metric-green"><Icon name="check" size={19} /></span><span className="metric-label">Em atendimento</span><strong className="metric-value"><CountUp value={processingTickets} /></strong><span className="metric-note">Chamados em andamento</span><span className="metric-arrow"><Icon name="arrow" size={15} /></span></button>
+        {metricCatalog.filter((metric)=>dashboardMetrics.includes(metric.id)).map((metric)=><button className="metric-card" key={metric.id} onClick={() => onNavigate(metric.page)} type="button"><span className={`metric-icon metric-${metric.tone}`}><Icon name={metric.icon} size={19} /></span><span className="metric-label">{metric.label}</span><strong className="metric-value"><CountUp value={metric.value} /></strong><span className="metric-note">{metric.note}</span><span className="metric-arrow"><Icon name="arrow" size={15} /></span></button>)}
       </section>
       <Reveal delay={0.11}><div className="dashboard-grid">
         <section className="panel"><div className="panel-heading"><div><h2>Chamados recentes</h2><p>Solicitações que passaram pela equipe</p></div><button className="subtle-link" onClick={() => onNavigate("Chamados")} type="button">Ver todos <Icon name="chevron" size={15} /></button></div>

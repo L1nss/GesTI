@@ -4,8 +4,14 @@ import { logEvent, lookupCep, maskCep, maskDocument, maskPhone, sealInvoice, ver
 import { Badge, Button, CountUp, EmptyState, Field, Icon, Modal, Reveal } from "./shared.jsx";
 import { useToast } from "./toast.js";
 import { downloadCsv as exportCsv, longDate, money, nextId, shortDate, today } from "./utils.js";
+import PixPayment from "./PixPayment.jsx";
 
 const ISS_OPTIONS = [0, 2, 3, 5];
+const defaultDueDate = () => {
+  const date = new Date(`${today()}T12:00:00`);
+  date.setDate(date.getDate() + 30);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
 
 /* ------------------------- geração de objeto da nota ------------------------- */
 
@@ -18,6 +24,8 @@ function buildInvoice({ form, items, company, issuer, invoiceNumber, series }) {
     number: invoiceNumber,
     series,
     createdAt: today(),
+    dueDate: form.dueDate,
+    paymentStatus: form.status === "Emitida" ? "A receber" : "—",
     issuer: issuer.name,
     issuerRole: issuer.role,
     status: form.status,
@@ -48,7 +56,7 @@ function InvoiceBuilder({ company, currentPerson, inventory, services, tickets, 
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
     customerName: "", customerDocument: "", customerEmail: "", customerAddress: "", customerPhone: "",
-    description: "", issRate: 0, shipping: "", discount: "", status: "Emitida", ticketId: "",
+    description: "", issRate: 0, shipping: "", discount: "", status: "Emitida", ticketId: "", dueDate: defaultDueDate(),
   });
   const [items, setItems] = useState([{ id: 1, inventoryId: "", serviceId: "", stock: null, name: "", quantity: 1, unit: "un", unitPrice: "" }]);
   const [cep, setCep] = useState("");
@@ -138,12 +146,13 @@ function InvoiceBuilder({ company, currentPerson, inventory, services, tickets, 
       .map((item) => item.stock?.name || "item do estoque");
   }, [items, inventory]);
 
+  const discountExceedsTotal = Number(form.discount) > subtotal + issValue + (Number(form.shipping) || 0);
   const canAdvance = step === 0
     ? Boolean(form.customerName.trim())
       && docState.state === "ok"
       && phoneState.state === "ok"
       && emailState.state === "ok"
-    : items.every((item) => item.name.trim() && Number(item.quantity) > 0 && Number(item.unitPrice) >= 0) && !stockShortage.length;
+    : items.every((item) => item.name.trim() && Number(item.quantity) > 0 && Number(item.unitPrice) >= 0) && !stockShortage.length && !discountExceedsTotal;
 
   const submit = (event) => {
     event.preventDefault();
@@ -281,6 +290,7 @@ function InvoiceBuilder({ company, currentPerson, inventory, services, tickets, 
             <Field className="field-full" label="Endereço do cliente">
               <input name="customerAddress" onChange={setField} placeholder="Rua, número, bairro, cidade · UF" value={form.customerAddress} />
             </Field>
+            <Field label="Vencimento do pagamento"><input name="dueDate" onChange={setField} required type="date" value={form.dueDate} /></Field>
           </div>
         )}
 
@@ -346,7 +356,7 @@ function InvoiceBuilder({ company, currentPerson, inventory, services, tickets, 
                 <input min="0" name="shipping" onChange={setField} step="0.01" type="number" value={form.shipping} />
               </Field>
               <Field label="Desconto (R$)">
-                <input min="0" name="discount" onChange={setField} step="0.01" type="number" value={form.discount} />
+                <input max={subtotal + issValue + (Number(form.shipping) || 0)} min="0" name="discount" onChange={setField} step="0.01" type="number" value={form.discount} />
               </Field>
             </div>
           </div>
@@ -379,6 +389,7 @@ function InvoiceBuilder({ company, currentPerson, inventory, services, tickets, 
               {Number(form.discount) > 0 && <span className="review-discount">Desconto <b>−{money(form.discount)}</b></span>}
               <span className="review-total">Total <b>{money(total)}</b></span>
             </div>
+            {discountExceedsTotal && <p className="auth-error" role="alert">O desconto não pode ser maior que o valor do documento.</p>}
             <Field label="Status da emissão">
               <select name="status" onChange={setField} value={form.status}>
                 <option>Emitida</option>
@@ -414,6 +425,7 @@ export function InvoicePrintView({ company, invoice }) {
           <span className="nf-badge">DOCUMENTO DE DEMONSTRAÇÃO · SEM VALOR FISCAL</span>
           <strong>Nº {invoice.number} · Série {invoice.series}</strong>
           <small>Emitida em {longDate(invoice.createdAt)}</small>
+          {invoice.dueDate && <small>Vencimento em {longDate(invoice.dueDate)}</small>}
           <Badge tone={invoice.status === "Emitida" ? "green" : "amber"}>{invoice.status}</Badge>
         </div>
       </header>
@@ -447,6 +459,9 @@ export function InvoicePrintView({ company, invoice }) {
         {invoice.discount > 0 && <div className="nf-sum nf-discount"><span>Desconto</span><b>−{money(invoice.discount)}</b></div>}
         <div className="nf-sum nf-total"><span>TOTAL</span><b>{money(invoice.total)}</b></div>
       </div>
+      {invoice.status === "Emitida" && invoice.paymentStatus === "A receber" && invoice.total > 0 && <PixPayment company={company} invoice={invoice} />}
+      {invoice.status === "Emitida" && invoice.paymentStatus === "Recebida" && <p className="nf-payment-received">Pagamento registrado em {invoice.paidAt ? longDate(invoice.paidAt) : "data não informada"}.</p>}
+      {invoice.status === "Emitida" && !invoice.paymentStatus && <p className="nf-payment-untracked">Situação do pagamento não registrada. Confirme antes de emitir uma nova cobrança.</p>}
       <footer className="nf-foot">
         <div className="nf-signature"><span />Emitida por {invoice.issuer} ({invoice.issuerRole})</div>
         <small>Documento gerado eletronicamente pelo GesTI em {longDate(invoice.createdAt)} · Sem valor fiscal — ambiente de demonstração.</small>
@@ -534,7 +549,7 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
 
   useEffect(() => {
     if (!ejectingInvoiceId) return undefined;
-    const timer = window.setTimeout(() => setEjectingInvoiceId(""), 1500);
+    const timer = window.setTimeout(() => setEjectingInvoiceId(""), 2400);
     return () => window.clearTimeout(timer);
   }, [ejectingInvoiceId]);
 
@@ -550,6 +565,11 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
   const totalIssued = issued.reduce((sum, invoice) => sum + invoice.total, 0);
   const totalAll = invoices.reduce((sum, invoice) => sum + invoice.total, 0);
 
+  const openPreview = (invoice) => {
+    setPreview(invoice);
+    setEjectingInvoiceId(invoice.id);
+  };
+
   const create = async (invoice) => {
     if (!canIssue || issuing) return;
     setIssuing(true);
@@ -562,8 +582,7 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
     setInvoices((current) => [sealed, ...current]);
     if (sealed.ticketId) onLinkTicketInvoice?.(sealed.ticketId, sealed);
     setModal(false);
-    setPreview(sealed);
-    setEjectingInvoiceId(sealed.status === "Emitida" ? sealed.id : "");
+    openPreview(sealed);
     notify({
       tone: "success",
       message: outbound.length
@@ -635,8 +654,8 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
                         ? <span className="seal-cell" title={`Hash ${invoice.seal.hash}`}><Icon name="shield" size={13} /> {String(invoice.seal.hash).slice(0, 8)}</span>
                         : <span className="seal-cell seal-missing" title="Sem selo do livro fiscal"><Icon name="warning" size={13} /> sem selo</span>}</td>
                       <td><div className="row-actions">
-                        <button className="text-link" onClick={() => setPreview(invoice)} type="button"><Icon name="eye" size={14} /> Ver</button>
-                        <button className="text-link" onClick={() => setPreview(invoice)} type="button"><Icon name="print" size={14} /> Imprimir</button>
+                        <button className="text-link" onClick={() => openPreview(invoice)} type="button"><Icon name="eye" size={14} /> Ver</button>
+                        <button className="text-link" onClick={() => openPreview(invoice)} type="button"><Icon name="print" size={14} /> Imprimir</button>
                       </div></td>
                     </tr>
                   ))}
@@ -651,12 +670,12 @@ export default function InvoicePage({ company, currentPerson, inventory = [], in
 
       {preview && (
         <Modal onClose={() => setPreview(null)} title={`Nota ${preview.number} · ${preview.customer.name}`} wide>
-          {ejectingInvoiceId === preview.id && <div aria-live="polite" className="invoice-guest-celebration" role="status"><GuestMascot className="invoice-guest" mode="eject" /><span>Guest acabou de emitir a nota {preview.number}.</span></div>}
+          {ejectingInvoiceId === preview.id && <div aria-live="polite" className="invoice-guest-celebration" role="status"><GuestMascot className="invoice-guest" mode="print" paperLabel="NF" /><span>Guest está imprimindo a nota {preview.number}.</span></div>}
           <div className="nf-actions">
             <Button onClick={() => window.print()} variant="secondary"><Icon name="print" size={15} /> Imprimir / PDF</Button>
             <Button onClick={() => setPreview(null)} variant="secondary">Fechar</Button>
           </div>
-          <InvoicePrintView company={company} invoice={preview} />
+          <div className={ejectingInvoiceId === preview.id ? "invoice-preview-body invoice-preview-body-printing" : "invoice-preview-body"}><InvoicePrintView company={company} invoice={preview} /></div>
         </Modal>
       )}
     </>

@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { classifyTicketPriority, maskCep, maskDocument, maskPhone, sealInvoice, validateCellphone, validateCnpj, validateCpf, validateEmail, verifyLedger } from "../src/store.js";
-import { csvCell, formatDateTime, money, nextId, PAGES, ROLE_PERMISSIONS, shortDate, slugify, SLA_BY_PRIORITY, today } from "../src/utils.js";
+import { csvCell, formatDateTime, isFirstAccessRoute, money, nextId, PAGES, ROLE_PERMISSIONS, shortDate, slugify, SLA_BY_PRIORITY, today } from "../src/utils.js";
+
+describe("rota de primeiro acesso", () => {
+  it("reconhece o link dedicado e não confunde as rotas internas", () => {
+    expect(isFirstAccessRoute("#/primeiro-acesso")).toBe(true);
+    expect(isFirstAccessRoute("#primeiro-acesso?origem=login")).toBe(true);
+    expect(isFirstAccessRoute("#/visao-geral")).toBe(false);
+    expect(isFirstAccessRoute("")).toBe(false);
+  });
+});
 
 describe("exportação CSV", () => {
   it("impede fórmulas vindas de campos de texto e preserva valores numéricos", () => {
@@ -168,6 +177,8 @@ describe("utilitários", () => {
   });
 
   it("catálogo de páginas é estável", () => {
-    expect(PAGES).toHaveLength(10);
+    expect(PAGES).toHaveLength(12);
+    expect(PAGES).not.toContain("Cargos da equipe");
+    expect(PAGES).toContain("Funcionários");
   });
 });

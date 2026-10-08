@@ -30,21 +30,34 @@ function ChartsTooltip({ active, payload, label }) {
 }
 
 /* Gráficos de custos ligados aos filtros da lista de lançamentos. */
-export function ExpenseCharts({ expenses = [], budgets = [], selectedMonth = "", onSelectMonth, selectedCategory = "Todas", onSelectCategory, onSelectExpense }) {
+export function ExpenseCharts({ expenses = [], invoices = [], budgets = [], selectedMonth = "", onSelectMonth, selectedCategory = "Todas", onSelectCategory, onSelectExpense }) {
   const [range, setRange] = useState(6);
   const categories = useMemo(() => Array.from(new Set(expenses.map((expense) => expense.category).filter(Boolean))).sort(), [expenses]);
   const keys = useMemo(() => lastMonths(range), [range]);
   const monthly = useMemo(() => {
-    const buckets = Object.fromEntries(keys.map((key) => [key, { key, approved: 0, pending: 0 }]));
+    const buckets = Object.fromEntries(keys.map((key) => [key, { key, approved: 0, pending: 0, billed: 0, received: 0, paid: 0 }]));
     for (const expense of expenses) {
       const key = String(expense.date || "").slice(0, 7);
       if (!buckets[key] || expense.status === "Rejeitada" || (selectedCategory !== "Todas" && expense.category !== selectedCategory)) continue;
       const value = Number(expense.amount) || 0;
       if (expense.status === "Aprovada") buckets[key].approved += value;
       if (expense.status === "Pendente") buckets[key].pending += value;
+      if (expense.status === "Aprovada" && expense.paymentStatus === "Paga") {
+        const paidKey = String(expense.paidAt || expense.date || "").slice(0, 7);
+        if (buckets[paidKey]) buckets[paidKey].paid += value;
+      }
+    }
+    for (const invoice of invoices) {
+      if (invoice.status !== "Emitida") continue;
+      const billedKey = String(invoice.createdAt || "").slice(0, 7);
+      if (buckets[billedKey]) buckets[billedKey].billed += Number(invoice.total) || 0;
+      if (invoice.paymentStatus === "Recebida") {
+        const receivedKey = String(invoice.paidAt || invoice.createdAt || "").slice(0, 7);
+        if (buckets[receivedKey]) buckets[receivedKey].received += Number(invoice.total) || 0;
+      }
     }
     return keys.map((key) => ({ ...buckets[key], month: monthLabel(key), total: buckets[key].approved + buckets[key].pending }));
-  }, [expenses, keys, selectedCategory]);
+  }, [expenses, invoices, keys, selectedCategory]);
 
   const activeMonth = selectedMonth || currentMonthKey();
   const categoryData = useMemo(() => {
@@ -80,7 +93,7 @@ export function ExpenseCharts({ expenses = [], budgets = [], selectedMonth = "",
   const spendingCurrent = expenses.filter((entry) => entry.status !== "Rejeitada" && String(entry.date || "").startsWith(activeMonth) && (selectedCategory === "Todas" || entry.category === selectedCategory)).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   const budgetUsage = budgetsCurrent ? Math.round(spendingCurrent / budgetsCurrent * 100) : null;
 
-  if (!expenses.length) return <EmptyState title="Sem dados de gastos ainda" note="Registre despesas para ver os gráficos de custos." />;
+  if (!expenses.length && !invoices.some((invoice) => invoice.status === "Emitida")) return <EmptyState title="Sem dados financeiros ainda" note="Registre uma despesa ou emita um documento para acompanhar o fluxo financeiro." />;
 
   return <>
     <Reveal><section className="charts-toolbar">
@@ -98,6 +111,13 @@ export function ExpenseCharts({ expenses = [], budgets = [], selectedMonth = "",
     </section></Reveal>
 
     <div className="charts-grid">
+      <Reveal className="chart-card" delay={0.05}>
+        <div className="chart-head"><div><h3>Faturado, recebido e pago</h3><p>Faturamento não significa recebimento; pagamentos são registrados separadamente.</p></div><span className="chart-icon"><Icon name="trend" size={16}/></span></div>
+        <div className="chart-body"><ResponsiveContainer height="100%" width="100%"><BarChart data={monthly} margin={{ bottom: 0, left: 4, right: 8, top: 8 }}>
+          <CartesianGrid stroke={GRID_COLOR} strokeDasharray="4 6" vertical={false}/><XAxis axisLine={false} dataKey="month" stroke={AXIS_COLOR} tick={{fontSize:11}} tickLine={false}/><YAxis axisLine={false} stroke={AXIS_COLOR} tick={{fontSize:11}} tickFormatter={(value)=>value>=1000?`R$ ${(value/1000).toFixed(1)}k`:`R$ ${value}`} tickLine={false} width={64}/><Tooltip content={<ChartsTooltip/>} cursor={{fill:"var(--chart-cursor)"}}/><Legend iconType="circle" iconSize={8} wrapperStyle={{fontSize:11.5,paddingTop:6}}/>
+          <Bar dataKey="billed" name="Faturado" fill="#40798C" radius={[5,5,0,0]}/><Bar dataKey="received" name="Recebido" fill="#70A9A1" radius={[5,5,0,0]}/><Bar dataKey="paid" name="Despesas pagas" fill="#C28D38" radius={[5,5,0,0]}/>
+        </BarChart></ResponsiveContainer></div>
+      </Reveal>
       <Reveal className="chart-card" delay={0.06}>
         <div className="chart-head"><div><h3>Despesas por mês</h3><p>Selecione uma coluna para filtrar os lançamentos. Rejeitadas ficam fora.</p></div><span className="chart-icon"><Icon name="trend" size={16} /></span></div>
         <div className="chart-body"><ResponsiveContainer height="100%" width="100%"><BarChart data={monthly} margin={{ bottom: 0, left: 4, right: 8, top: 8 }} onClick={(event) => { const point = event?.activePayload?.[0]?.payload; if (point) onSelectMonth?.(point.key); }}>

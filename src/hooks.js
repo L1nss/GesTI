@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /* =====================================================================
    Hooks compartilhados (sem componentes — mantém o fast-refresh limpo).
@@ -24,7 +24,7 @@ function readSavedValue(key, initialValue) {
 export function useSavedState(key, initialValue, serialize = identity) {
   const [value, setValue] = useState(() => readSavedValue(key, initialValue));
   const latest = useRef(value);
-  latest.current = value;
+  useLayoutEffect(() => { latest.current = value; }, [value]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {

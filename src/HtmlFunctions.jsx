@@ -4,10 +4,13 @@ import { Icon } from "./shared.jsx";
 function NavIcon({ name }) {
   const map = {
     "Visão geral": "grid",
-    Chamados: "headset",
+    Chamados: "ticket",
+    Equipe: "chat",
+    Funcionários: "user",
+    "Cargos da equipe": "sliders",
     Clientes: "users",
     Estoque: "box",
-    Custos: "chart",
+    Custos: "receipt",
     "Notas fiscais": "file",
     Registro: "list",
     Logs: "clipboard",
@@ -45,8 +48,8 @@ export function SideBar({ aberta, aoFechar, aoEntrar, aoSair, paginaAtiva, aoNav
       <aside className={`sidebar ${aberta ? "sidebar-open" : "sidebar-collapsed"}`} id="navegacao-principal" onMouseEnter={aoEntrar} onMouseLeave={aoSair}>
         <div className="sidebar-head">
           <a className="brand" href="#" onClick={(event) => { event.preventDefault(); aoNavegar("Visão geral"); }}>
-            <span className="brand-mark">G</span>
-            <span className="brand-name"><strong>GesTI</strong><small>{(empresaNome || "GESTÃO DE TI").toUpperCase().slice(0, 22)}</small></span>
+            <img alt="" aria-hidden="true" className="brand-symbol" src="/gesti-mark-primary.png" />
+            <span className="brand-name"><strong>Gesti</strong><small>{(empresaNome || "GESTÃO DE TI").toUpperCase().slice(0, 22)}</small></span>
           </a>
         </div>
 
@@ -83,8 +86,8 @@ export function SideBar({ aberta, aoFechar, aoEntrar, aoSair, paginaAtiva, aoNav
         </nav>
 
         <div className="sidebar-foot">
-          <button className="support-card" onClick={onNotificacoes} type="button">
-            <span className="support-pulse" />
+          <button aria-label="Abrir central de alertas" className="support-card" onClick={onNotificacoes} title="Central de alertas" type="button">
+            <span className="support-icon"><Icon name="bell" size={17} /></span>
             <span className="support-copy"><strong>Central de alertas</strong><small>Ver notificações</small></span>
             <span className="support-chevron"><Icon name="chevron" size={14} /></span>
           </button>

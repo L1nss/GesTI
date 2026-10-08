@@ -5,26 +5,28 @@
 
 /* ------------------------------ navegação ------------------------------ */
 
-export const PAGES = ["Visão geral", "Chamados", "Clientes", "Estoque", "Custos", "Notas fiscais", "Registro", "Logs", "Empresa", "Sobre"];
+export const PAGES = ["Visão geral", "Chamados", "Equipe", "Funcionários", "Clientes", "Estoque", "Custos", "Notas fiscais", "Registro", "Logs", "Empresa", "Sobre"];
 
 /* Páginas visíveis por perfil — único ponto de verdade do menu. */
 export const ROLE_PAGES = {
-  "Funcionário": ["Visão geral", "Chamados", "Sobre"],
+  "Funcionário": ["Visão geral", "Chamados", "Equipe", "Sobre"],
   TI: PAGES.filter((page) => !["Custos", "Empresa", "Logs"].includes(page)),
   Supervisor: PAGES.filter((page) => !["Custos", "Empresa", "Logs"].includes(page)),
   "Gerência": PAGES.filter((page) => page !== "Empresa"),
   Admin: PAGES,
+  Dono: PAGES,
   "Dono da empresa": PAGES,
 };
 
-export const ROLES = ["Admin", "Dono da empresa", "TI", "Gerência", "Supervisor", "Funcionário"];
+export const ROLES = ["Dono", "TI", "Gerência", "Funcionário"];
 
 /* Capacidades por perfil — substitui os arrays espalhados pelo app. */
 export const ROLE_PERMISSIONS = {
-  Admin: ["viewCosts", "manageStock", "manageTickets", "claimTickets", "approve", "manageCompany", "managePeople", "manageServices", "clearLogs", "backup", "manageClients"],
-  "Dono da empresa": ["viewCosts", "manageStock", "manageTickets", "claimTickets", "approve", "manageCompany", "managePeople", "manageServices", "clearLogs", "backup", "manageClients"],
+  Dono: ["viewCosts", "manageStock", "manageTickets", "claimTickets", "approve", "manageCompany", "managePeople", "manageServices", "clearLogs", "backup", "manageClients", "manageCalendar", "createTeamChats"],
+  Admin: ["viewCosts", "manageStock", "manageTickets", "claimTickets", "approve", "manageCompany", "managePeople", "manageServices", "clearLogs", "backup", "manageClients", "createTeamChats"],
+  "Dono da empresa": ["viewCosts", "manageStock", "manageTickets", "claimTickets", "approve", "manageCompany", "managePeople", "manageServices", "clearLogs", "backup", "manageClients", "manageCalendar", "createTeamChats"],
   TI: ["manageStock", "manageTickets", "claimTickets", "manageServices"],
-  "Gerência": ["viewCosts", "manageStock", "manageTickets", "approve", "managePeople", "manageServices", "clearLogs", "manageClients"],
+  "Gerência": ["viewCosts", "manageStock", "manageTickets", "approve", "managePeople", "manageServices", "clearLogs", "manageClients", "manageCalendar"],
   Supervisor: ["manageStock", "manageTickets", "manageServices"],
   "Funcionário": [],
 };
@@ -45,6 +47,10 @@ export function slugify(text) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+export function isFirstAccessRoute(hash) {
+  return String(hash || "").replace(/^#\/?/, "").split(/[?&]/, 1)[0] === "primeiro-acesso";
 }
 
 /* Roteamento por hash: #/chamados, #/notas-fiscais... */

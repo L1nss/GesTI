@@ -4,14 +4,11 @@ import { Button, Field, Icon } from "./shared.jsx";
 import GuestMascot from "./GuestMascot.jsx";
 import { useToast } from "./toast.js";
 import { lookupCep, maskCep, maskDocument, maskPhone, validateEmail } from "./store.js";
-import { supabaseCompleteRecovery, supabaseConsumeRecoveryLink, supabaseEnabled, supabaseSendPasswordReset, supabaseSignUp } from "./supabaseApi.js";
+import { isFirstAccessRoute } from "./utils.js";
+import { supabaseClaimEmployeeRegistration, supabaseCompleteRecovery, supabaseConsumePasswordlessLink, supabaseConsumeRecoveryLink, supabaseEnabled, supabaseGetUser, supabaseSendPasswordReset, supabaseSignIn, supabaseSignOut } from "./supabaseApi.js";
 
-const DEMO_ACCOUNTS = [
-  { name: "Mariana Costa", role: "Dono da empresa", email: "mariana@acme.com.br" },
-  { name: "Rafael Lima", role: "TI", email: "rafael@acme.com.br" },
-  { name: "Pedro Alves", role: "Funcionário", email: "pedro@acme.com.br" },
-];
 const recoveryFromLink = supabaseConsumeRecoveryLink();
+const passwordlessFromLink = supabaseConsumePasswordlessLink();
 
 function BrandPanel({ mascotMode = "idle", emailGaze = 0 }) {
   return (
@@ -21,12 +18,11 @@ function BrandPanel({ mascotMode = "idle", emailGaze = 0 }) {
         <path d="M100 0C52 160 16 335 16 500s36 340 84 500" fill="none" stroke="#07393c" strokeWidth="1.4" />
       </svg>
       <div className="auth-brand-inner">
-        <div className="auth-brand-lockup"><span className="brand-mark brand-mark-lg">G</span><strong>GesTI</strong></div>
+        <div className="auth-brand-lockup"><img alt="" aria-hidden="true" className="brand-symbol brand-symbol-lg" src="/gesti-mark-primary.png" /><strong>Gesti</strong></div>
         <div className="auth-brand-main">
           <div className="auth-brand-copy"><h1>Sua operação<br />de TI.</h1><p>Acompanhe chamados, peças, custos e documentos da equipe.</p></div>
           <GuestMascot className="auth-mascot" gaze={emailGaze} mode={mascotMode} />
         </div>
-        <div className="auth-brand-bottom"><span>Chamados <i /> Estoque <i /> Custos <i /> Documentos</span><p>Acesso da equipe da sua organização.</p></div>
       </div>
     </aside>
   );
@@ -87,7 +83,7 @@ function LoginForm({ store, onSwitch, onLoginStart, onLoginFailed, onMascotModeC
   return (
     <motion.div animate={{ opacity: 1 }} className="auth-card" initial={reduceMotion ? false : { opacity: 0 }} transition={{ duration: 0.18 }}>
       <h2>Acesse sua conta</h2>
-      <p className="auth-subtitle">Entre com o e-mail e a senha da sua conta.</p>
+      <p className="auth-subtitle">Use seu e-mail corporativo e sua senha para entrar.</p>
       <form className="auth-form" onSubmit={submit}>
         <Field className={typingField === "email" ? "is-typing" : ""} label="E-mail corporativo">
           <input autoComplete="username" name="email" onBlur={() => { onMascotModeChange("idle"); onEmailGazeChange(0); }} onChange={handleEmailTyping} onFocus={() => onMascotModeChange("email")} placeholder="voce@empresa.com.br" required type="email" value={email} />
@@ -113,15 +109,66 @@ function LoginForm({ store, onSwitch, onLoginStart, onLoginFailed, onMascotModeC
         } catch (cause) { setError(cause.message || "Não foi possível solicitar a recuperação."); }
         finally { setResetBusy(false); }
       }} type="button">{resetBusy ? "Solicitando recuperação…" : "Esqueci minha senha"}</button>}
-      <div className="auth-switch auth-switch-login"><span>Precisa cadastrar sua empresa?</span><button className="auth-register-button" onClick={onSwitch} type="button">Criar cadastro</button></div>
-      <details className="demo-box">
-        <summary>Acessar conta de demonstração</summary>
-        <div className="demo-details"><small>Senha para os perfis de demonstração: <code>acme123</code></small>
-          <div className="demo-accounts">{DEMO_ACCOUNTS.map((account) => <button key={account.email} onClick={() => { setEmail(account.email); setPassword("acme123"); setError(""); }} type="button"><strong>{account.role}</strong><span>{account.email}</span></button>)}</div>
-        </div>
-      </details>
+      <div className="auth-switch auth-switch-login">
+        <span>Ainda não cadastrou sua empresa?</span>
+        <button className="auth-register-button" onClick={onSwitch} type="button">Cadastrar empresa</button>
+        {supabaseEnabled && <button className="auth-first-access-button" onClick={() => { window.location.hash = "/primeiro-acesso"; }} type="button">Já recebeu um código? Ativar acesso</button>}
+      </div>
     </motion.div>
   );
+}
+
+function FirstAccessForm({ store, onLoginStart, onLoginFailed, onMascotModeChange, onReturn }) {
+  const notify = useToast();
+  const [claimEmail, setClaimEmail] = useState("");
+  const [claimCode, setClaimCode] = useState("");
+  const [claimPassword, setClaimPassword] = useState("");
+  const [claimConfirm, setClaimConfirm] = useState("");
+  const [claimError, setClaimError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setClaimError("");
+    if (claimPassword.length < 8) return setClaimError("A senha precisa ter pelo menos 8 caracteres.");
+    if (new TextEncoder().encode(claimPassword).length > 72) return setClaimError("A senha pode ter no máximo 72 bytes. Remova alguns caracteres e tente novamente.");
+    if (claimPassword !== claimConfirm) return setClaimError("As senhas não coincidem.");
+    const email = claimEmail.trim().toLowerCase();
+    setBusy(true);
+    onLoginStart();
+    try {
+      await supabaseClaimEmployeeRegistration({ email, code: claimCode, password: claimPassword });
+      await supabaseSignIn(email, claimPassword);
+      const result = await store.loginWithCurrentSession(email);
+      if (!result.ok) {
+        await supabaseSignOut();
+        throw new Error(result.error);
+      }
+      // Remove a rota de primeiro acesso antes de montar o workspace autenticado.
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      notify({ tone: "success", title: result.company, message: `Bem-vindo(a), ${result.person.name}!` });
+    } catch (cause) {
+      onLoginFailed();
+      setClaimError(cause.message || "Não foi possível concluir o primeiro acesso.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <motion.div animate={{ opacity: 1, y: 0 }} className="auth-card first-access-page" initial={{ opacity: 0, y: 12 }} transition={{ duration: 0.2 }}>
+    <span className="panel-icon"><Icon name="lock" size={18}/></span>
+    <h2>Ative seu acesso</h2>
+    <p className="auth-subtitle">Informe seu e-mail e o código recebido do administrador. Em seguida, crie sua senha.</p>
+    <form className="auth-form" onSubmit={submit}>
+      <Field label="E-mail cadastrado"><input autoComplete="email" onChange={(event) => setClaimEmail(event.target.value)} required type="email" value={claimEmail}/></Field>
+      <Field label="Código de primeiro acesso"><input autoCapitalize="characters" autoComplete="one-time-code" maxLength={14} onChange={(event) => setClaimCode(event.target.value.toUpperCase())} placeholder="12 caracteres" required value={claimCode}/></Field>
+      <Field label="Crie sua senha"><input autoComplete="new-password" minLength={8} onBlur={() => onMascotModeChange("idle")} onChange={(event) => setClaimPassword(event.target.value)} onFocus={() => onMascotModeChange("password")} required type="password" value={claimPassword}/></Field>
+      <Field label="Confirme sua senha"><input autoComplete="new-password" minLength={8} onBlur={() => onMascotModeChange("idle")} onChange={(event) => setClaimConfirm(event.target.value)} onFocus={() => onMascotModeChange("password")} required type="password" value={claimConfirm}/></Field>
+      {claimError && <p className="auth-error" role="alert"><Icon name="warning" size={14}/>{claimError}</p>}
+      <Button busy={busy} className="auth-submit" disabled={busy} type="submit">{busy ? "Preparando seu acesso…" : "Criar senha e entrar"}</Button>
+    </form>
+    <button className="text-link auth-recovery" onClick={onReturn} type="button">Voltar para entrar</button>
+  </motion.div>;
 }
 
 function RegisterForm({ store, onSwitch }) {
@@ -137,7 +184,6 @@ function RegisterForm({ store, onSwitch }) {
   useEffect(() => {
     if (cep.replace(/\D/g, "").length !== 8) return undefined;
     let active = true;
-    setCepBusy(true);
     /* lookupCep única do app (BrasilAPI → ViaCEP). */
     lookupCep(cep)
       .then((data) => {
@@ -191,7 +237,7 @@ function RegisterForm({ store, onSwitch }) {
   return (
     <motion.div animate={{ opacity: 1, y: 0 }} className="auth-card" initial={reduceMotion ? false : { opacity: 0, y: 18 }} transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}>
       <h2>Cadastrar empresa</h2>
-      <p className="auth-subtitle">Crie o workspace da empresa. Você entra como administrador e convida a equipe depois.</p>
+      <p className="auth-subtitle">Cadastre sua empresa e crie o acesso do administrador.</p>
       <form className="auth-form" onSubmit={submit}>
         <div className="auth-group-label"><Icon name="building" size={14} /> Dados da empresa</div>
         <Field label="Razão social / nome">
@@ -211,7 +257,7 @@ function RegisterForm({ store, onSwitch }) {
         <div className="auth-row">
           <Field label="CEP (busca automática)">
             <div className="cep-wrap">
-              <input inputMode="numeric" maxLength="9" name="cep" onChange={(event) => setCep(maskCep(event.target.value))} placeholder="00000-000" value={cep} />
+              <input inputMode="numeric" maxLength="9" name="cep" onChange={(event) => { const value = maskCep(event.target.value); setCep(value); setCepBusy(value.replace(/\D/g, "").length === 8); }} placeholder="00000-000" value={cep} />
               {cepBusy && <Icon className="spin cep-spinner" name="spinner" size={15} />}
             </div>
           </Field>
@@ -241,7 +287,7 @@ function RegisterForm({ store, onSwitch }) {
         </div>
         <div className="auth-row">
           <Field label="Senha de acesso">
-            <input autoComplete="new-password" name="password" onChange={setAdminField} placeholder="Mínimo 6 caracteres" required type="password" value={admin.password} />
+            <input autoComplete="new-password" minLength={8} name="password" onChange={setAdminField} placeholder="Mínimo 8 caracteres" required type="password" value={admin.password} />
           </Field>
           <Field label="Confirmar senha">
             <input autoComplete="new-password" name="confirm" onChange={setAdminField} placeholder="Repita a senha" required type="password" value={admin.confirm} />
@@ -258,73 +304,63 @@ function RegisterForm({ store, onSwitch }) {
           {busy ? <><Icon className="spin" name="spinner" size={17} /> Criando workspace…</> : <><Icon name="building" size={16} /> Criar empresa e entrar</>}
         </Button>
       </form>
-      <div className="auth-switch"><span>Sua empresa já tem cadastro?</span><button onClick={onSwitch} type="button">Fazer login</button></div>
+      <div className="auth-switch"><span>Sua empresa já tem cadastro?</span><button onClick={onSwitch} type="button">Entrar</button></div>
     </motion.div>
   );
 }
 
-function InviteAcceptForm({ store, token, onBack }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
-  const submit = async (event) => {
-    event.preventDefault(); setError(""); setMessage("");
-    if (!validateEmail(email) || password.length < 8 || name.trim().length < 2) return setError("Informe nome, e-mail válido e senha com pelo menos 8 caracteres.");
-    setBusy(true);
-    const key = `tigest-pending-invite-${email.trim().toLowerCase()}`;
-    try {
-      window.localStorage.setItem(key, token);
-      const signup = await supabaseSignUp(email.trim().toLowerCase(), password, name.trim());
-      if (!signup.access_token) {
-        setMessage("Conta criada. Confirme o e-mail e depois entre com o mesmo endereço e senha para concluir o convite.");
-        return;
+function PasswordlessCompletion({ store }) {
+  const [message, setMessage] = useState("Confirmando seu e-mail e preparando o primeiro acesso…");
+  const loginWithCurrentSession = store.loginWithCurrentSession;
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const user = await supabaseGetUser();
+        const result = await loginWithCurrentSession(user.email);
+        if (!result.ok) throw new Error(result.error);
+      } catch (error) {
+        if (active) setMessage(error.message || "Este acesso expirou ou não corresponde a um funcionário cadastrado. Peça ao administrador um novo código de primeiro acesso.");
       }
-      const result = await store.login(email, password);
-      if (!result.ok) setError(result.error);
-    } catch (cause) {
-      setError(cause.message || "Não foi possível criar a conta. Se já tem conta, entre com ela para aceitar o convite.");
-    } finally { setBusy(false); }
-  };
-  return <motion.div animate={{ opacity: 1 }} className="auth-card" initial={{ opacity: 0 }} transition={{ duration: 0.18 }}>
-    <h2>Convite para sua equipe</h2>
-    <p className="auth-subtitle">Crie seu acesso GesTI com o mesmo e-mail para o qual o convite foi emitido.</p>
-    <form className="auth-form" onSubmit={submit}>
-      <Field label="Seu nome"><input autoComplete="name" onChange={(event) => setName(event.target.value)} required value={name} /></Field>
-      <Field label="E-mail convidado"><input autoComplete="email" onChange={(event) => setEmail(event.target.value)} required type="email" value={email} /></Field>
-      <Field label="Crie uma senha"><input autoComplete="new-password" minLength={6} onChange={(event) => setPassword(event.target.value)} required type="password" value={password} /></Field>
-      {error && <p className="auth-error" role="alert"><Icon name="warning" size={14} /> {error}</p>}
-      {message && <p className="auth-success" role="status">{message}</p>}
-      <Button className="auth-submit" disabled={busy} type="submit">{busy ? "Criando acesso…" : "Aceitar convite"}</Button>
-    </form>
-    <div className="auth-switch"><span>Já possui conta?</span><button onClick={onBack} type="button">Fazer login</button></div>
-  </motion.div>;
+    })();
+    return () => { active = false; };
+  }, [loginWithCurrentSession]);
+  return <div className="auth-card"><h2>Primeiro acesso</h2><p className="auth-subtitle" role="status">{message}</p></div>;
 }
 
 export default function AuthScreen({ store, onLoginStart, onLoginFailed }) {
-  const invitation = window.location.hash.match(/^#invite=([0-9a-f-]{36})$/i)?.[1] || "";
-  const [mode, setMode] = useState(() => recoveryFromLink ? "recovery" : invitation ? "invite" : "login");
+  const [mode, setMode] = useState(() => recoveryFromLink ? "recovery" : passwordlessFromLink ? "first-access" : isFirstAccessRoute(window.location.hash) ? "claim" : "login");
   const [recoveryPassword, setRecoveryPassword] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [mascotMode, setMascotMode] = useState("idle");
   const [emailGaze, setEmailGaze] = useState(0);
+  useEffect(() => {
+    const syncFirstAccessRoute = () => setMode((current) => {
+      if (isFirstAccessRoute(window.location.hash)) return "claim";
+      return current === "claim" ? "login" : current;
+    });
+    window.addEventListener("hashchange", syncFirstAccessRoute);
+    return () => window.removeEventListener("hashchange", syncFirstAccessRoute);
+  }, []);
+  const returnToLogin = () => {
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    setMode("login");
+  };
   return (
     <div className="auth-screen">
       <BrandPanel emailGaze={emailGaze} mascotMode={mascotMode} />
       <div className="auth-side">
-        <div className="auth-mobile-brand"><span className="brand-mark">G</span><strong>GesTI</strong><GuestMascot className="auth-mobile-guest" gaze={emailGaze} mode={mascotMode} /></div>
+        <div className="auth-mobile-brand"><img alt="" aria-hidden="true" className="brand-symbol" src="/gesti-mark-primary.png" /><strong>Gesti</strong><GuestMascot className="auth-mobile-guest" gaze={emailGaze} mode={mascotMode} /></div>
         <AnimatePresence mode="wait" initial={false}>
           <motion.div animate={{ opacity: 1 }} exit={{ opacity: 0 }} initial={{ opacity: 0 }} key={mode} transition={{ duration: 0.16 }}>
             {mode === "recovery" ? <div className="auth-card"><h2>Definir nova senha</h2><p className="auth-subtitle">Use pelo menos 8 caracteres.</p><form className="auth-form" onSubmit={async (event) => { event.preventDefault(); setRecoveryBusy(true); setRecoveryError(""); try { await supabaseCompleteRecovery(recoveryPassword); setMode("login"); } catch (error) { setRecoveryError(error.message || "Não foi possível trocar a senha."); } finally { setRecoveryBusy(false); } }}><Field label="Nova senha"><input autoComplete="new-password" minLength={8} onChange={(event) => setRecoveryPassword(event.target.value)} required type="password" value={recoveryPassword} /></Field>{recoveryError && <p className="auth-error" role="alert">{recoveryError}</p>}<Button disabled={recoveryBusy} type="submit">{recoveryBusy ? "Salvando…" : "Salvar nova senha"}</Button></form></div>
-              : mode === "invite" && invitation ? <InviteAcceptForm onBack={() => setMode("login")} store={store} token={invitation} /> : mode === "login"
+              : mode === "claim" ? <FirstAccessForm onLoginFailed={onLoginFailed} onLoginStart={onLoginStart} onMascotModeChange={setMascotMode} onReturn={returnToLogin} store={store} />
+              : mode === "first-access" ? <PasswordlessCompletion store={store} /> : mode === "login"
               ? <LoginForm onLoginFailed={onLoginFailed} onLoginStart={onLoginStart} onSwitch={() => { setMascotMode("idle"); setMode("register"); }} onEmailGazeChange={setEmailGaze} onMascotModeChange={setMascotMode} store={store} />
               : <RegisterForm onSwitch={() => setMode("login")} store={store} />}
           </motion.div>
         </AnimatePresence>
-        <p className="auth-foot">Acesso reservado à equipe da sua empresa.</p>
       </div>
     </div>
   );

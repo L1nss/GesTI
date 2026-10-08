@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSavedState } from "./hooks.js";
+import { keepWithinRetention } from "./retention.js";
 import { SLA_BY_PRIORITY, today } from "./utils.js";
 import { hasSupabaseSession, restRpc, restSelect, restUpdate, supabaseEnabled, supabaseGetUser, supabaseSignIn, supabaseSignOut, supabaseSignUp, supabaseUpdatePassword, supabaseSendPasswordReset, writeAuditEvent } from "./supabaseApi.js";
 
@@ -104,6 +105,7 @@ function hashString(text) {
 function invoiceFingerprint(invoice, includeTicketLink = false) {
   return JSON.stringify({
     id: invoice.id, number: invoice.number, series: invoice.series, createdAt: invoice.createdAt,
+    ...(invoice.dueDate ? { dueDate: invoice.dueDate } : {}),
     ...(includeTicketLink && invoice.ticketId ? { ticketId: invoice.ticketId } : {}),
     issuer: invoice.issuer, status: invoice.status,
     customer: invoice.customer, description: invoice.description || "", items: invoice.items,
@@ -264,7 +266,10 @@ export async function lookupCep(cep) {
 
 export function readLogs() {
   try {
-    return JSON.parse(window.localStorage.getItem(LOGS_KEY) ?? "[]");
+    const stored = JSON.parse(window.localStorage.getItem(LOGS_KEY) ?? "[]");
+    const retained = keepWithinRetention(stored);
+    if (retained.length !== stored.length) window.localStorage.setItem(LOGS_KEY, JSON.stringify(retained));
+    return retained;
   } catch {
     return [];
   }
@@ -362,6 +367,9 @@ function migrateOrg(org) {
   draft.clients = draft.clients.filter((client) => client && typeof client === "object");
   if (!draft.company || typeof draft.company !== "object") draft.company = {};
   draft.company = { name: "Minha empresa", document: "", email: "", phone: "", address: "", department: "Tecnologia da Informação", ...draft.company };
+  for (const key of ["tickets", "clients", "inventory", "services", "expenses", "invoices", "movementLog", "suppliers", "budgets", "replyTemplates"]) {
+    draft[key] = keepWithinRetention(draft[key]);
+  }
   if (!Array.isArray(draft.movementLog)) draft.movementLog = [];
   if (!Array.isArray(draft.suppliers)) draft.suppliers = [];
   if (!Array.isArray(draft.budgets)) draft.budgets = [];
@@ -457,9 +465,16 @@ export function useStore() {
   const session = useMemo(() => {
     if (!savedSession) return null;
     if (savedSession.backend === "supabase" && !hasSupabaseSession()) return null;
-    const age = Date.now() - Date.parse(savedSession.at || "");
-    return Number.isFinite(age) && age > SESSION_MAX_AGE_MS ? null : savedSession;
+    return savedSession;
   }, [savedSession]);
+
+  useEffect(() => {
+    if (!savedSession) return undefined;
+    const createdAt = Date.parse(savedSession.at || "");
+    const expiresIn = Number.isFinite(createdAt) ? createdAt + SESSION_MAX_AGE_MS - Date.now() : 0;
+    const timer = window.setTimeout(() => setSession(null), Math.max(0, expiresIn));
+    return () => window.clearTimeout(timer);
+  }, [savedSession, setSession]);
 
   /* A organização ativa é memoizada: antes migrateOrg rodava a cada render,
      recriando objetos e invalidando memoizações a jusante. */
@@ -468,19 +483,26 @@ export function useStore() {
     return foundOrg ? migrateOrg(foundOrg) : null;
   }, [orgs, session]);
 
-  const currentPerson = org && session
+  const currentPerson = useMemo(() => org && session
     ? org.people.find((person) => person.email === session.email) || { id: "U-000", name: session.name, email: session.email, role: session.role }
-    : null;
+    : null, [org, session]);
 
   useEffect(() => {
+    try {
+      const events = JSON.parse(window.localStorage.getItem(EVENTS_KEY) || "[]");
+      const retainedEvents = keepWithinRetention(events);
+      if (retainedEvents.length !== events.length) window.localStorage.setItem(EVENTS_KEY, JSON.stringify(retainedEvents));
+    } catch { /* mantém o restante do workspace mesmo se o log local estiver corrompido */ }
+    readLogs();
     if (!orgs.length) {
       setOrgs([seedOrg()]);
       pushEvent("ORG-001", "Empresa demonstrativa Acme Tecnologia provisionada");
     } else {
       setOrgs((current) => current.map(migrateOrg));
     }
-    setSeeded(true);
+    const readyTimer = window.setTimeout(() => setSeeded(true), 0);
     // Executa apenas na montagem: garante a existência da empresa demo.
+    return () => window.clearTimeout(readyTimer);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Sincronia entre abas: mudanças salvas em outra aba recarregam o estado
@@ -501,7 +523,7 @@ export function useStore() {
     }));
   }, [setOrgs]);
 
-  const login = useCallback(async (email, password) => {
+  const login = useCallback(async (email, password, useCurrentSession = false) => {
     /* Bloqueio simples de força bruta. */
     try {
       const attempt = JSON.parse(window.localStorage.getItem("tigest-login-attempts") ?? "null");
@@ -514,11 +536,9 @@ export function useStore() {
     }
 
     const normalized = String(email).trim().toLowerCase();
-    let hasPendingInvite = false;
-    try { hasPendingInvite = Boolean(window.localStorage.getItem(`tigest-pending-invite-${normalized}`)); } catch { /* remote auth still gets its usual attempt */ }
     let authenticated = null;
     let remoteError = "";
-    for (const candidate of (hasPendingInvite ? [] : orgs.filter((item) => !/^[0-9a-f-]{36}$/i.test(item.id)))) {
+    for (const candidate of orgs.filter((item) => !/^[0-9a-f-]{36}$/i.test(item.id))) {
       const person = candidate.people.find((item) => String(item.login || item.email).toLowerCase() === normalized);
       if (person && await verifyPassword(password, person.passwordHash)) {
         authenticated = { candidate, person };
@@ -528,14 +548,13 @@ export function useStore() {
 
     if (!authenticated && supabaseEnabled) {
       try {
-        await supabaseSignIn(String(email).trim().toLowerCase(), password);
+        if (useCurrentSession) {
+          if (!hasSupabaseSession()) throw new Error("O acesso expirou. Peça ao administrador um novo código de primeiro acesso.");
+        } else await supabaseSignIn(String(email).trim().toLowerCase(), password);
         const user = await supabaseGetUser();
-        const inviteKey = `tigest-pending-invite-${String(email).trim().toLowerCase()}`;
-        const inviteToken = window.localStorage.getItem(inviteKey);
-        const invitedCompanyId = inviteToken ? await restRpc("accept_company_invite", { p_invite_token: inviteToken }) : null;
+        const firstLoginCompanyId = await restRpc("activate_employee_first_login", {});
         let memberships = await restSelect("memberships", `user_id=eq.${user.id}`);
-        let membership = (invitedCompanyId && memberships.find((item) => item.company_id === invitedCompanyId)) || memberships[0];
-        if (membership && invitedCompanyId) window.localStorage.removeItem(inviteKey);
+        let membership = (firstLoginCompanyId && memberships.find((item) => item.company_id === firstLoginCompanyId)) || memberships[0];
         if (!membership) {
           const pendingKey = `tigest-pending-company-${String(email).trim().toLowerCase()}`;
           let pending = null;
@@ -566,8 +585,8 @@ export function useStore() {
             ? item.people.map((person) => person.id === user.id ? { ...person, name: membership.display_name, role: membership.role, capabilities: membership.capabilities || {} } : person)
             : [...item.people, { id: user.id, name: membership.display_name, email: user.email, role: membership.role, capabilities: membership.capabilities || {} }],
         } : item) : [...current, remoteOrg]);
-        if (invitedCompanyId) void writeAuditEvent(invitedCompanyId, user.id, "membership.invite_accepted", "membership", user.id, { role: membership.role });
-        setSession({ orgId: remoteCompany.id, email: user.email, name: membership.display_name, role: membership.role, userId: user.id, at: new Date().toISOString(), backend: "supabase" });
+        if (firstLoginCompanyId) void writeAuditEvent(firstLoginCompanyId, user.id, "membership.first_login_activated", "membership", user.id, { role: membership.role });
+        setSession({ orgId: remoteCompany.id, email: user.email, name: membership.display_name, role: membership.role, userId: user.id, requiresPasswordSetup: membership.password_setup_required === true, at: new Date().toISOString(), backend: "supabase" });
         pushEvent(remoteCompany.id, `${membership.display_name} entrou no GesTI via Supabase`);
         return { ok: true, person: { name: membership.display_name }, company: remoteCompany.name };
       } catch (error) {
@@ -616,6 +635,8 @@ export function useStore() {
     pushEvent(candidate.id, `${person.name} entrou no workspace`);
     return { ok: true, person, company: candidate.company.name };
   }, [orgs, setOrgs, setSession, updateOrg]);
+
+  const loginWithCurrentSession = useCallback((email) => login(email, "", true), [login]);
 
   const registerCompany = useCallback(async (data) => {
     const documentDigits = String(data.document).replace(/\D/g, "");
@@ -689,6 +710,12 @@ export function useStore() {
     setSession(null);
   }, [session, setSession]);
 
+  const completeEmployeePasswordSetup = useCallback(async () => {
+    if (!session || session.backend !== "supabase" || !hasSupabaseSession()) throw new Error("A sessão expirou. Entre novamente pelo seu e-mail.");
+    await restRpc("complete_employee_password_setup", { p_company_id: session.orgId });
+    setSession((current) => current ? { ...current, requiresPasswordSetup: false } : current);
+  }, [session, setSession]);
+
   /* Nova pessoa sempre recebe hash PBKDF2 (nunca a senha em claro). */
   const addPersonWithAccess = useCallback(async (person) => {
     if (!session) return;
@@ -759,8 +786,8 @@ export function useStore() {
 
   return {
     orgs, org, session, currentPerson, seeded,
-    login, registerCompany, logout, updateOrg, setData,
+    login, loginWithCurrentSession, registerCompany, logout, updateOrg, setData,
     setTickets, setInventory, setExpenses, setInvoices, setCompanyData, setPeople, setServices,
-    addPersonWithAccess, removePerson, resetWorkspace, changeOwnPassword, resetPersonPassword,
+    addPersonWithAccess, removePerson, resetWorkspace, changeOwnPassword, resetPersonPassword, completeEmployeePasswordSetup,
   };
 }

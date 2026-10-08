@@ -1,5 +1,6 @@
 const API_URL = String(import.meta.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
 const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
+const AUTH_REDIRECT_URL = "https://www.gesti.sbs/";
 const TOKEN_KEY = "tigest-supabase-access-token";
 const SESSION_KEY = "tigest-supabase-auth-session";
 
@@ -43,20 +44,35 @@ async function activeToken() {
 async function request(path, { method = "GET", body, token, headers = {} } = {}) {
   if (!supabaseEnabled) throw new Error("A conexão Supabase não está configurada.");
   const bearer = token === undefined ? await activeToken() : token;
-  const response = await fetch(`${API_URL}${path}`, {
-    method,
-    headers: {
-      apikey: PUBLISHABLE_KEY,
-      Authorization: `Bearer ${bearer || PUBLISHABLE_KEY}`,
-      ...(body === undefined ? {} : { "Content-Type": "application/json", Prefer: "return=representation" }),
-      ...headers,
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
+  let response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      method,
+      headers: {
+        apikey: PUBLISHABLE_KEY,
+        // Publishable keys identify the project via `apikey`; they are not JWTs.
+        // Only send Authorization when we have an actual user access token.
+        ...(bearer && bearer !== PUBLISHABLE_KEY ? { Authorization: `Bearer ${bearer}` } : {}),
+        ...(body === undefined ? {} : { "Content-Type": "application/json", Prefer: "return=representation" }),
+        ...headers,
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  } catch (cause) {
+    if (cause instanceof TypeError) {
+      throw new Error("Não foi possível conectar ao Supabase. Verifique a conexão, o CORS e se a função está publicada.", { cause });
+    }
+    throw cause;
+  }
   const text = await response.text();
   let value;
   try { value = text ? JSON.parse(text) : null; } catch { value = text; }
-  if (!response.ok) throw new Error(value?.msg || value?.message || value?.error_description || value?.hint || `Supabase respondeu ${response.status}.`);
+  if (!response.ok) {
+    const message = value?.msg || value?.message || value?.error_description || value?.hint;
+    // Ajuda a localizar falhas de configuração sem expor URL, query params ou credenciais.
+    const endpoint = path.split("?")[0].replace(/^\//, "");
+    throw new Error(message || `Supabase respondeu ${response.status} em ${endpoint}.`);
+  }
   return value;
 }
 
@@ -72,6 +88,27 @@ export async function supabaseSignUp(email, password, displayName) {
   return result;
 }
 
+export function supabaseConsumePasswordlessLink() {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const type = params.get("type");
+  if (!params.get("access_token") || !["magiclink", "signup", "email"].includes(type || "")) return false;
+  saveSession({ access_token: params.get("access_token"), refresh_token: params.get("refresh_token"), expires_in: Number(params.get("expires_in") || 3600) });
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  return true;
+}
+
+export async function supabaseUpdateCurrentPassword(password) {
+  await request("/auth/v1/user", { method: "PUT", body: { password } });
+}
+
+export async function supabaseRegisterEmployee(employee) {
+  return request("/functions/v1/register-employee", { method: "POST", body: employee });
+}
+
+export async function supabaseClaimEmployeeRegistration(claim) {
+  return request("/functions/v1/claim-employee-registration", { method: "POST", token: PUBLISHABLE_KEY, body: claim });
+}
+
 export async function supabaseSignOut() {
   try { if (storedToken()) await request("/auth/v1/logout", { method: "POST" }); } finally { saveSession(null); }
 }
@@ -80,7 +117,7 @@ export async function supabaseUpdatePassword(email, currentPassword, newPassword
   await request("/auth/v1/user", { method: "PUT", body: { password: newPassword } });
 }
 export async function supabaseSendPasswordReset(email) {
-  const redirect = encodeURIComponent(`${window.location.origin}${window.location.pathname}`);
+  const redirect = encodeURIComponent(AUTH_REDIRECT_URL);
   await request(`/auth/v1/recover?redirect_to=${redirect}`, { method: "POST", token: PUBLISHABLE_KEY, body: { email } });
 }
 export function supabaseConsumeRecoveryLink() {
