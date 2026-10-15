@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Button, Field, Icon } from "./shared.jsx";
 import GuestMascot from "./GuestMascot.jsx";
-import loginIllustration from "./assets/gesti-login-illustration.png";
+import loginScene from "./assets/gesti-login-scene.webp";
 import { useToast } from "./toast.js";
 import { lookupCep, maskCep, maskDocument, maskPhone, validateEmail } from "./store.js";
 import { isFirstAccessRoute } from "./utils.js";
@@ -10,6 +10,16 @@ import { supabaseClaimEmployeeRegistration, supabaseCompleteRecovery, supabaseCo
 
 const recoveryFromLink = supabaseConsumeRecoveryLink();
 const passwordlessFromLink = supabaseConsumePasswordlessLink();
+
+function LoginGuestScene({ mode, gaze = 0, className }) {
+  return (
+    <div aria-label="Guest, mascote impressora GesTI ao lado de um notebook e uma planta" className={className} data-mascot-mode={mode} role="img">
+      <img alt="" aria-hidden="true" className="auth-scene-art" src={loginScene} />
+      <GuestMascot className="auth-scene-guest" gaze={gaze} mode={mode} paperLabel="G" />
+      <span aria-hidden="true" className="auth-scene-guest-label">Guest</span>
+    </div>
+  );
+}
 
 function BrandPanel({ mascotMode = "idle", emailGaze = 0 }) {
   return (
@@ -22,10 +32,7 @@ function BrandPanel({ mascotMode = "idle", emailGaze = 0 }) {
         <div className="auth-brand-lockup"><img alt="" aria-hidden="true" className="brand-symbol brand-symbol-lg" src="/gesti-mark.svg" /><strong>GesTI</strong></div>
         <div className="auth-brand-main">
           <div className="auth-brand-copy"><h1>Sua operação<br />de TI.</h1><p>Chamados, equipamentos, custos e documentos da equipe em um só lugar.</p></div>
-          <div className="auth-mascot-scene">
-            <img alt="Ilustração GesTI com mascote, computador e planta" className="auth-mascot-image" src={loginIllustration} />
-            <GuestMascot className="auth-mascot auth-mascot-animated" gaze={emailGaze} mode={mascotMode} />
-          </div>
+          <LoginGuestScene className="auth-mascot-scene" gaze={emailGaze} mode={mascotMode} />
         </div>
       </div>
     </aside>
@@ -355,14 +362,14 @@ export default function AuthScreen({ store, onLoginStart, onLoginFailed }) {
     <div className="auth-screen">
       <BrandPanel emailGaze={emailGaze} mascotMode={mascotMode} />
       <div className="auth-side">
-        <div className="auth-mobile-brand"><img alt="" aria-hidden="true" className="brand-symbol" src="/gesti-mark.svg" /><strong>GesTI</strong><GuestMascot className="auth-mobile-guest" gaze={emailGaze} mode={mascotMode} /></div>
-        <img alt="Mascote GesTI trabalhando em um computador, ao lado de uma planta" className="auth-mobile-illustration" src={loginIllustration} />
+        <div className="auth-mobile-brand"><img alt="" aria-hidden="true" className="brand-symbol" src="/gesti-mark.svg" /><strong>GesTI</strong></div>
+        <LoginGuestScene className="auth-mobile-illustration" gaze={emailGaze} mode={mascotMode} />
         <AnimatePresence mode="wait" initial={false}>
           <motion.div animate={{ opacity: 1 }} exit={{ opacity: 0 }} initial={{ opacity: 0 }} key={mode} transition={{ duration: 0.16 }}>
             {mode === "recovery" ? <div className="auth-card"><h2>Definir nova senha</h2><p className="auth-subtitle">Use pelo menos 8 caracteres.</p><form className="auth-form" onSubmit={async (event) => { event.preventDefault(); setRecoveryBusy(true); setRecoveryError(""); try { await supabaseCompleteRecovery(recoveryPassword); setMode("login"); } catch (error) { setRecoveryError(error.message || "Não foi possível trocar a senha."); } finally { setRecoveryBusy(false); } }}><Field label="Nova senha"><input autoComplete="new-password" minLength={8} onChange={(event) => setRecoveryPassword(event.target.value)} required type="password" value={recoveryPassword} /></Field>{recoveryError && <p className="auth-error" role="alert">{recoveryError}</p>}<Button disabled={recoveryBusy} type="submit">{recoveryBusy ? "Salvando…" : "Salvar nova senha"}</Button></form></div>
               : mode === "claim" ? <FirstAccessForm onLoginFailed={onLoginFailed} onLoginStart={onLoginStart} onMascotModeChange={setMascotMode} onReturn={returnToLogin} store={store} />
               : mode === "first-access" ? <PasswordlessCompletion store={store} /> : mode === "login"
-              ? <LoginForm onLoginFailed={onLoginFailed} onLoginStart={onLoginStart} onSwitch={() => { setMascotMode("idle"); setMode("register"); }} onEmailGazeChange={setEmailGaze} onMascotModeChange={setMascotMode} store={store} />
+              ? <LoginForm onEmailGazeChange={setEmailGaze} onLoginFailed={onLoginFailed} onLoginStart={onLoginStart} onSwitch={() => { setMascotMode("idle"); setMode("register"); }} onMascotModeChange={setMascotMode} store={store} />
               : <RegisterForm onSwitch={() => setMode("login")} store={store} />}
           </motion.div>
         </AnimatePresence>
