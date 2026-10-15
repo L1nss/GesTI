@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Button, Field, Icon } from "./shared.jsx";
 import GuestMascot from "./GuestMascot.jsx";
-import loginScene from "./assets/gesti-login-scene.webp";
 import { useToast } from "./toast.js";
 import { lookupCep, maskCep, maskDocument, maskPhone, validateEmail } from "./store.js";
 import { isFirstAccessRoute } from "./utils.js";
@@ -13,8 +12,7 @@ const passwordlessFromLink = supabaseConsumePasswordlessLink();
 
 function LoginGuestScene({ className }) {
   return (
-    <div aria-label="Guest, mascote impressora GesTI ao lado de um notebook e uma planta" className={className} role="img">
-      <img alt="" aria-hidden="true" className="auth-scene-art" src={loginScene} />
+    <div aria-label="Guest, mascote impressora GesTI" className={className} role="img">
       <GuestMascot className="auth-scene-guest" mode="idle" paperLabel="G" />
       <span aria-hidden="true" className="auth-scene-guest-label">Guest</span>
     </div>
