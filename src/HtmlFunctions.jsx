@@ -27,7 +27,8 @@ function NavIcon({ name }) {
 export function SideBar({ aberta, aoFechar, aoEntrar, aoSair, paginaAtiva, aoNavegar, paginas, contagens, onNotificacoes, onLogout, empresaNome, backend }) {
   const reduceMotion = useReducedMotion();
   const [moreOpen, setMoreOpen] = useState(false);
-  const primaryPages = paginas.filter((page) => ["Visão geral", "Chamados", "Estoque", "Custos"].includes(page));
+  const mainNavigation = ["Visão geral", "Chamados", "Estoque", "Custos", "Notas fiscais", "Clientes", "Equipe", "Empresa"];
+  const primaryPages = mainNavigation.filter((page) => paginas.includes(page));
   const secondaryPages = paginas.filter((page) => !primaryPages.includes(page));
   const secondaryActive = secondaryPages.includes(paginaAtiva);
   const showMore = moreOpen || secondaryActive;

@@ -90,7 +90,7 @@ function Workspace({ store, theme, toggleTheme }) {
   const can = useCallback((permission) => permissions[permission] === true, [permissions]);
 
   const [page, navigateToPage] = useHashPage("Visão geral");
-  const [sideOpen, setSideOpen] = useState(false);
+  const [sideOpen, setSideOpen] = useState(() => window.innerWidth >= 1024);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [readAlerts, setReadAlerts] = useSavedState(`tigest-alerts-read-v1-${org.id}`, []);
   const [teamMessages, setTeamMessages] = useState([]);
@@ -102,7 +102,6 @@ function Workspace({ store, theme, toggleTheme }) {
   const [ticketDetail, setTicketDetail] = useState("");
   const [invoiceSignal, setInvoiceSignal] = useState(0);
   const [invoiceFocus, setInvoiceFocus] = useState("");
-  const [dashboardMetrics, setDashboardMetrics] = useSavedState(`gesti-dashboard-metrics-v1-${org.id}-${session.userId || session.email}`, ["open", "overdue", "processing"]);
   const [backupBusy, setBackupBusy] = useState(false);
   const [tourStep, setTourStep] = useState(() => org.onboardingComplete ? null : 0);
   const [remoteReady, setRemoteReady] = useState(() => !hasSupabaseSession() || !/^[0-9a-f-]{36}$/i.test(org.id));
@@ -111,13 +110,10 @@ function Workspace({ store, theme, toggleTheme }) {
   const remoteWriteQueueRef = useRef(Promise.resolve());
 
   useEffect(() => {
-    if (!remoteReady || !hasSupabaseSession() || !session.userId || !/^[0-9a-f-]{36}$/i.test(org.id)) return;
-    let active = true;
-    restSelect("member_preferences", `company_id=eq.${org.id}&user_id=eq.${session.userId}`).then((rows) => {
-      if (active && Array.isArray(rows) && Array.isArray(rows[0]?.dashboard_metrics)) setDashboardMetrics(rows[0].dashboard_metrics);
-    }).catch((error) => { if (active) void captureAppError(error, org.id); });
-    return () => { active = false; };
-  }, [remoteReady, org.id, session.userId, setDashboardMetrics]);
+    const syncSidebarToViewport = () => setSideOpen(window.innerWidth >= 1024);
+    window.addEventListener("resize", syncSidebarToViewport);
+    return () => window.removeEventListener("resize", syncSidebarToViewport);
+  }, []);
 
   useEffect(() => {
     if (!remoteReady || !hasSupabaseSession() || !session.userId || !/^[0-9a-f-]{36}$/i.test(org.id)) return;
@@ -137,11 +133,6 @@ function Workspace({ store, theme, toggleTheme }) {
     const timer = window.setInterval(() => void refreshTeamMessages().catch((error) => void captureAppError(error, org.id)), 8000);
     return () => { active = false; window.clearInterval(timer); };
   }, [remoteReady, org.id, session.userId]);
-
-  const changeDashboardMetrics = (metrics) => {
-    setDashboardMetrics(metrics);
-    if (hasSupabaseSession() && session.userId && /^[0-9a-f-]{36}$/i.test(org.id)) void restInsert("member_preferences", { company_id: org.id, user_id: session.userId, dashboard_metrics: metrics }, { upsert: true, onConflict: "company_id,user_id", returnRepresentation: false }).catch((error) => void captureAppError(error, org.id));
-  };
 
   useEffect(() => {
     document.body.classList.toggle("report-printing", modal === "report");
@@ -331,7 +322,7 @@ function Workspace({ store, theme, toggleTheme }) {
     if (window.innerWidth >= 1024) setSideOpen(true);
   };
   const leaveSidebar = () => {
-    if (window.innerWidth >= 1024) setSideOpen(false);
+    if (window.innerWidth < 1024) setSideOpen(false);
   };
 
   const navigate = (nextPage) => {
@@ -1076,7 +1067,7 @@ function Workspace({ store, theme, toggleTheme }) {
   };
 
   const pageIntro = {
-    "Visão geral": ["Central de operações", "Veja o que acontece no setor de TI e identifique o que precisa de atenção."],
+    "Visão geral": ["Central de operações", "Acompanhe o que está acontecendo no setor de TI."],
     Chamados: ["Central de chamados", "Acompanhe solicitações, prazos e atualizações da equipe."],
     Equipe: ["Espaço da equipe", "Converse com a equipe e consulte o calendário compartilhado."],
     Funcionários: ["Cadastro de funcionários", "Convide pessoas e gerencie os acessos da equipe."],
@@ -1107,8 +1098,8 @@ function Workspace({ store, theme, toggleTheme }) {
         <header className="topbar">
           <div className="topbar-left">
             {!sideOpen && <button aria-controls="navegacao-principal" aria-expanded={sideOpen} aria-label="Abrir menu" className="menu-trigger" onClick={() => setSideOpen(true)} type="button"><Icon name="menu" size={21} /></button>}
-            <div className="breadcrumbs"><span>{company.logoUrl && <img alt="" className="company-logo" src={company.logoUrl} />}{company.name}</span><Icon name="chevron" size={14} /><strong>{page}</strong></div>
-            <span className="topbar-clock" title="Horário local"><Icon name="clock" size={13} /> {now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+            <a aria-label="GesTI, voltar à visão geral" className="topbar-mobile-brand" href="#/visao-geral" onClick={(event) => { event.preventDefault(); navigate("Visão geral"); }}><img alt="" aria-hidden="true" src="/gesti-mark.svg" /><strong>GesTI</strong></a>
+            <label className="topbar-search"><Icon name="search" size={18} /><input aria-label="Buscar no GesTI" onChange={(event) => setQuery(event.target.value)} placeholder="Buscar no GesTI..." type="search" value={query} /></label>
           </div>
           <div className="topbar-right">
             <div className="topbar-actions">
@@ -1119,7 +1110,7 @@ function Workspace({ store, theme, toggleTheme }) {
               <button aria-label={theme === "dark" ? "Ativar tema claro" : "Ativar tema escuro"} className="theme-toggle" onClick={toggleTheme} title={theme === "dark" ? "Tema claro" : "Tema escuro"} type="button"><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button>
               <button className="logout-button" onClick={logout} type="button"><Icon name="logout" size={15} /> Sair</button>
             </div>
-            <div className="avatar" title={`${currentPerson.name} · ${role}`}>{currentPerson.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</div>
+            <div aria-label={`${currentPerson.name} · ${role}`} className="avatar" title={`${currentPerson.name} · ${role}`}><Icon name="user" size={19} /></div>
           </div>
         </header>
 
@@ -1131,12 +1122,11 @@ function Workspace({ store, theme, toggleTheme }) {
                 {page === "Estoque" && can("manageStock") && <Button onClick={() => setModal("inventory")}><Icon name="plus" size={17} /> Adicionar item</Button>}
                 {page === "Custos" && <Button onClick={() => setModal("expense")}><Icon name="plus" size={17} /> Novo lançamento</Button>}
                 {page === "Notas fiscais" && can("approve") && <Button onClick={() => setInvoiceSignal((signal) => signal + 1)}><Icon name="file" size={17} /> Novo documento demonstrativo</Button>}
-                {page === "Visão geral" && can("viewCosts") && <Button onClick={() => setModal("report")} variant="secondary"><Icon name="file" size={16} /> Relatório mensal / PDF</Button>}
               </div></Reveal>
 
               {tourStep === null && <PageGuestTip key={`${org.id}-${session.userId || session.email}-${page}`} organizationId={org.id} page={page} userId={session.userId || session.email} />}
 
-              {page === "Visão geral" && <Suspense fallback={<LoadingPanel />}><LazyOverview approvedTotal={approvedTotal} backupBusy={backupBusy} canBackup={can("backup")} canSeeFinances={can("viewCosts")} company={company} dashboardMetrics={dashboardMetrics} onDashboardMetricsChange={changeDashboardMetrics} inventory={role === "Funcionário" ? [] : inventory} invoices={role === "Funcionário" ? [] : invoices} lowStock={lowStock} now={now} onBackupExport={exportBackup} onBackupImport={importBackup} onNavigate={navigate} overdueTickets={overdueTickets} pendingExpenses={pendingExpenses} pendingTickets={pendingTickets} personName={currentPerson.name} remoteAuth={session.backend === "supabase"} role={role} tickets={visibleTickets} /></Suspense>}
+              {page === "Visão geral" && <Suspense fallback={<LoadingPanel />}><LazyOverview backupBusy={backupBusy} canBackup={can("backup")} canSeeFinances={can("viewCosts")} inventory={role === "Funcionário" ? [] : inventory} invoices={role === "Funcionário" ? [] : invoices} lowStock={role === "Funcionário" ? [] : lowStock} now={now} onBackupExport={exportBackup} onBackupImport={importBackup} onNavigate={navigate} pendingExpenses={pendingExpenses} query={query} remoteAuth={session.backend === "supabase"} role={role} tickets={visibleTickets} /></Suspense>}
               {page === "Visão geral" && role !== "Funcionário" && <details className="overview-team"><summary>Desempenho da equipe e cumprimento de prazos</summary><Suspense fallback={<LoadingPanel />}><LazyTeamMetrics tickets={visibleTickets} /></Suspense></details>}
               {page === "Chamados" && <Suspense fallback={<LoadingPanel />}><LazyTicketsPage canClaim={can("claimTickets")} canManage={can("manageTickets")} canManageReplies={can("manageTickets")} canManageServices={can("manageServices")} canSetCategory={can("claimTickets")} canSetPriority={can("claimTickets")} currentPersonName={currentPerson.name} detail={ticketDetail} invoices={invoices} now={now} onAddComment={addTicketComment} onChangePriority={changeTicketPriority} onChangeStatus={changeTicketStatus} onClaim={claimTicket} onDeclineAssignment={declineAssignment} onDeleteReply={deleteReplyTemplate} onLinkService={linkServiceToTicket} onSaveReply={saveReplyTemplate} onSurvey={submitSatisfaction} onUnlinkService={unlinkServiceFromTicket} query={query} replyTemplates={org.replyTemplates || []} role={role} services={filteredServices} setDetail={setTicketDetail} setQuery={setQuery} tickets={filteredTickets} /></Suspense>}
               {page === "Chamados" && role !== "Funcionário" && <details className="overview-team ticket-team-insights"><summary>Indicadores da equipe e prazos</summary><Suspense fallback={<LoadingPanel />}><LazyTeamMetrics tickets={visibleTickets} /></Suspense></details>}

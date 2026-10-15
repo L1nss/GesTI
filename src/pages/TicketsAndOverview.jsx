@@ -203,7 +203,7 @@ export function TeamMetrics({ tickets }) {
 }
 
 /* Visão geral: herói, indicadores e painéis resumo. */
-export function Overview({ tickets, overdueTickets, lowStock = [], pendingExpenses = [], onNavigate, company, personName, role, canSeeFinances, canBackup, onBackupExport, onBackupImport, backupBusy, remoteAuth = false, dashboardMetrics = ["open", "overdue", "processing"], onDashboardMetricsChange = () => {} }) {
+export function Overview({ tickets, lowStock = [], pendingExpenses = [], inventory = [], invoices = [], onNavigate, role, canSeeFinances, canBackup, onBackupExport, onBackupImport, backupBusy, remoteAuth = false, query = "", now = new Date() }) {
   const openTickets = tickets.filter((ticket) => ticket.status === "Aberto").length;
   const processingTickets = tickets.filter((ticket) => ticket.status === "Em processamento").length;
   const resolvedTickets = tickets.filter((ticket) => ticket.status === "Resolvido").length;
@@ -211,45 +211,41 @@ export function Overview({ tickets, overdueTickets, lowStock = [], pendingExpens
   const openShare = totalStatusTickets ? openTickets / totalStatusTickets * 100 : 0;
   const processingShare = totalStatusTickets ? processingTickets / totalStatusTickets * 100 : 0;
   const resolvedShare = totalStatusTickets ? resolvedTickets / totalStatusTickets * 100 : 0;
-  const recentTickets = [...tickets].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 4);
-  const [editingMetrics, setEditingMetrics] = useState(false);
+  const monthResolved = tickets.filter((ticket) => {
+    if (ticket.status !== "Resolvido") return false;
+    const resolvedAt = new Date(ticket.resolvedAt || ticket.createdAt);
+    return resolvedAt.getFullYear() === now.getFullYear() && resolvedAt.getMonth() === now.getMonth();
+  }).length;
+  const recentTickets = [...tickets]
+    .filter((ticket) => !query || `${ticket.id} ${ticket.title} ${ticket.requester} ${ticket.customerName || ""} ${ticket.status}`.toLowerCase().includes(query.toLowerCase()))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 7);
   const metricCatalog = [
-    { id: "open", label: "Aguardando atendimento", value: openTickets, note: "Chamados em aberto", icon: "ticket", tone: "violet", page: "Chamados" },
-    { id: "overdue", label: "Chamados fora do prazo", value: overdueTickets.length, note: "Além do prazo definido pela prioridade", icon: "clock", tone: "amber", page: "Chamados" },
-    { id: "processing", label: "Em atendimento", value: processingTickets, note: "Chamados em andamento", icon: "check", tone: "green", page: "Chamados" },
-    { id: "stock", label: "Itens para reposição", value: lowStock.length, note: "Abaixo do estoque mínimo", icon: "box", tone: "amber", page: "Estoque" },
-    ...(canSeeFinances ? [{ id: "expenses", label: "Despesas em análise", value: pendingExpenses.length, note: "Aguardando aprovação", icon: "receipt", tone: "blue", page: "Custos" }] : []),
+    { id: "open", label: "Chamados abertos", value: openTickets, icon: "ticket", tone: "blue", page: "Chamados" },
+    { id: "processing", label: "Em atendimento", value: processingTickets, icon: "clock", tone: "blue", page: "Chamados" },
+    { id: "resolved", label: "Resolvidos no mês", value: monthResolved, icon: "check", tone: "green", page: "Chamados" },
+    ...(role !== "Funcionário" ? [{ id: "stock", label: "Estoque em alerta", value: lowStock.length, icon: "warning", tone: "red", page: "Estoque" }] : []),
   ];
+  const summaryRows = [
+    { label: "Chamados abertos", value: openTickets, icon: "ticket", page: "Chamados" },
+    ...(role !== "Funcionário" ? [{ label: "Itens em alerta", value: lowStock.length, icon: "box", page: "Estoque" }] : []),
+    ...(canSeeFinances ? [{ label: "Despesas em análise", value: pendingExpenses.length, icon: "receipt", page: "Custos" }] : []),
+    { label: "Documentos", value: invoices.length, icon: "file", page: "Notas fiscais" },
+    ...(role !== "Funcionário" ? [{ label: "Itens cadastrados", value: inventory.length, icon: "box", page: "Estoque" }] : []),
+  ].slice(0, 4);
 
   return (
     <>
-      <Reveal><section aria-label="Boas-vindas" className="hero">
-        <div aria-hidden="true" className="hero-aurora"><span className="aurora-orb orb-1" /><span className="aurora-orb orb-2" /><span className="aurora-orb orb-3" /></div>
-        <div className="hero-inner">
-          <div className="hero-copy">
-            <span className="hero-chip"><span className="live-dot" /> {company.name.toUpperCase()} · SISTEMA OPERACIONAL</span>
-            <h2>Olá, {personName.split(" ")[0]}.</h2>
-            <p>{role === "Funcionário" ? "Acompanhe seus chamados ou abra uma solicitação." : "Veja o que precisa de atenção na operação."}</p>
-            <div className="hero-actions">
-              <button className="hero-cta" onClick={() => onNavigate("Chamados")} type="button"><span aria-hidden="true" className="cta-ripples"><span /><span /><span /></span>Ver chamados <Icon name="arrow" size={17} /></button>
-            </div>
-          </div>
-        </div>
-      </section></Reveal>
-      <div className="metric-settings-row"><span>Indicadores da sua tela inicial</span><button className="text-link" onClick={() => setEditingMetrics((value) => !value)} type="button"><Icon name="sliders" size={15}/>{editingMetrics?"Concluir":"Personalizar"}</button></div>
-      {editingMetrics&&<div className="metric-picker">{metricCatalog.map((metric)=><label className="checkbox-field" key={metric.id}><input checked={dashboardMetrics.includes(metric.id)} onChange={(event)=>onDashboardMetricsChange(event.target.checked?[...new Set([...dashboardMetrics,metric.id])]:dashboardMetrics.filter((item)=>item!==metric.id))} type="checkbox"/><span>{metric.label}</span></label>)}</div>}
       <section aria-label="Indicadores principais" className="metric-grid">
-        {metricCatalog.filter((metric)=>dashboardMetrics.includes(metric.id)).map((metric)=><button className="metric-card" key={metric.id} onClick={() => onNavigate(metric.page)} type="button"><span className={`metric-icon metric-${metric.tone}`}><Icon name={metric.icon} size={19} /></span><span className="metric-label">{metric.label}</span><strong className="metric-value"><CountUp value={metric.value} /></strong><span className="metric-note">{metric.note}</span><span className="metric-arrow"><Icon name="arrow" size={15} /></span></button>)}
+        {metricCatalog.map((metric)=><button className="metric-card" key={metric.id} onClick={() => onNavigate(metric.page)} type="button"><span className={`metric-icon metric-${metric.tone}`}><Icon name={metric.icon} size={19} /></span><span className="metric-label">{metric.label}</span><strong className="metric-value"><CountUp value={metric.value} /></strong></button>)}
       </section>
       <Reveal delay={0.11}><div className="dashboard-grid">
-        <section className="panel"><div className="panel-heading"><div><h2>Chamados recentes</h2><p>Solicitações que passaram pela equipe</p></div><button className="subtle-link" onClick={() => onNavigate("Chamados")} type="button">Ver todos <Icon name="chevron" size={15} /></button></div>
-          {recentTickets.length ? <div className="table-scroll"><table><thead><tr><th>Solicitação</th><th>Solicitante</th><th>Prioridade</th><th>Status</th></tr></thead><tbody>{recentTickets.map((ticket) => <tr key={ticket.id}><td><span className="cell-title">{ticket.title}</span><span className="cell-subtitle">{ticket.id}</span></td><td>{ticket.requester}</td><td><Badge tone={priorityTone(ticket.priority)}>{ticket.priority}</Badge></td><td><Badge tone={ticket.status === "Resolvido" ? "green" : ticket.status === "Em processamento" ? "blue" : "neutral"}>{ticket.status}</Badge></td></tr>)}</tbody></table></div> : <EmptyState note="Os novos chamados aparecerão aqui." title="Sem chamados" />}
+        <section className="panel"><div className="panel-heading"><h2>Chamados recentes</h2><button className="subtle-link" onClick={() => onNavigate("Chamados")} type="button">Ver todos <Icon name="chevron" size={15} /></button></div>
+          {recentTickets.length ? <div className="table-scroll"><table><thead><tr><th>#</th><th>Assunto</th><th>Cliente</th><th>Status</th><th>Abertura</th></tr></thead><tbody>{recentTickets.map((ticket) => <tr key={ticket.id}><td><span className="cell-subtitle">{ticket.id}</span></td><td><span className="cell-title">{ticket.title}</span></td><td>{ticket.customerName || ticket.requester}</td><td><Badge tone={ticket.status === "Resolvido" ? "green" : ticket.status === "Em processamento" ? "blue" : "neutral"}>{ticket.status === "Em processamento" ? "Em atendimento" : ticket.status}</Badge></td><td>{Number.isNaN(Date.parse(ticket.createdAt)) ? "—" : new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(Date.parse(ticket.createdAt))}</td></tr>)}</tbody></table></div> : <EmptyState note={query ? "Tente outro termo de busca." : "Os novos chamados aparecerão aqui."} title={query ? "Nenhum resultado" : "Sem chamados"} />}
         </section>
-        {(role !== "Funcionário" || canSeeFinances) && <div className="side-stack">
-          {role !== "Funcionário" && <section className="panel stock-panel"><div className="panel-heading"><div><h2>Estoque</h2><p>{lowStock.length ? `${lowStock.length} ${lowStock.length === 1 ? "item precisa" : "itens precisam"} de reposição` : "Nenhum item abaixo do mínimo"}</p></div><span className="panel-icon amber-icon"><Icon name="box" /></span></div>{lowStock.length > 0 && <ul className="stock-list">{lowStock.slice(0, 3).map((item) => <li key={item.id}><span className="stock-bullet" /><span className="stock-info"><strong>{item.name}</strong><small>{item.category} · mínimo {item.minimum} un.</small></span><Badge tone="amber">{item.quantity} un.</Badge></li>)}</ul>}<button className="subtle-link stock-action" onClick={() => onNavigate("Estoque")} type="button">Ver estoque <Icon name="arrow" size={15} /></button></section>}
-          {canSeeFinances && <button className="panel overview-finance" onClick={() => onNavigate("Custos")} type="button"><span className="metric-icon metric-green"><Icon name="receipt" size={19} /></span><span><strong>{pendingExpenses.length}</strong><small>despesas aguardando análise</small></span><Icon name="arrow" size={16} /></button>}
+        <div className="side-stack">
           <section aria-label="Saúde da operação" className="panel overview-health">
-            <div className="panel-heading"><div><h2>Saúde da operação</h2><p>Chamados distribuídos por status</p></div></div>
+            <div className="panel-heading"><h2>Saúde da operação</h2></div>
             {totalStatusTickets ? <div className="overview-health-content">
               <div aria-label={`${resolvedTickets} resolvidos, ${processingTickets} em atendimento e ${openTickets} em aberto`} className="health-donut" role="img" style={{ background: `conic-gradient(#8EB99A 0% ${resolvedShare}%, #6F9CAA ${resolvedShare}% ${resolvedShare + processingShare}%, #D8AA64 ${resolvedShare + processingShare}% 100%)` }}><span><strong>{totalStatusTickets}</strong><small>chamados</small></span></div>
               <ul className="health-legend">
@@ -258,8 +254,9 @@ export function Overview({ tickets, overdueTickets, lowStock = [], pendingExpens
                 <li><span className="health-dot health-dot-open" /><span>Em aberto</span><strong>{openTickets}</strong></li>
               </ul>
             </div> : <p className="health-empty">Os indicadores aparecem aqui quando houver chamados.</p>}
+            <ul className="overview-summary-list">{summaryRows.map((row) => <li key={row.label}><button onClick={() => onNavigate(row.page)} type="button"><Icon name={row.icon} size={17} /><span>{row.label}</span><strong>{row.value}</strong></button></li>)}</ul>
           </section>
-        </div>}
+        </div>
       </div></Reveal>
       {canBackup && <details className="overview-backup"><summary>{remoteAuth ? "Exportar dados" : "Backup e restauração"}</summary><section className="panel backup-panel"><div><strong>Proteção dos dados</strong><p>{remoteAuth ? "Baixe uma cópia dos dados acessíveis nesta empresa. A restauração do Supabase deve ser feita pela administração do banco." : "Baixe uma cópia desta empresa ou restaure um backup feito no GesTI."}</p></div><div className="backup-actions"><button className="button button-secondary" onClick={onBackupExport} type="button"><Icon name="download" size={15} /> {remoteAuth ? "Baixar cópia" : "Baixar backup"}</button>{!remoteAuth && <label className="button button-secondary">{backupBusy ? "Restaurando…" : "Restaurar backup"}<input accept="application/json,.json" disabled={backupBusy} hidden onChange={onBackupImport} type="file" /></label>}</div></section></details>}
     </>
