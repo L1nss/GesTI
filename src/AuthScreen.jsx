@@ -22,7 +22,10 @@ function BrandPanel({ mascotMode = "idle", emailGaze = 0 }) {
         <div className="auth-brand-lockup"><img alt="" aria-hidden="true" className="brand-symbol brand-symbol-lg" src="/gesti-mark.svg" /><strong>GesTI</strong></div>
         <div className="auth-brand-main">
           <div className="auth-brand-copy"><h1>Sua operação<br />de TI.</h1><p>Chamados, equipamentos, custos e documentos da equipe em um só lugar.</p></div>
-          <img alt="Mascote GesTI trabalhando em um computador, ao lado de uma planta" className="auth-mascot-image" src={loginIllustration} />
+          <div className="auth-mascot-scene">
+            <img alt="Ilustração GesTI com mascote, computador e planta" className="auth-mascot-image" src={loginIllustration} />
+            <GuestMascot className="auth-mascot auth-mascot-animated" gaze={emailGaze} mode={mascotMode} />
+          </div>
         </div>
       </div>
     </aside>

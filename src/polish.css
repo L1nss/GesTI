@@ -168,7 +168,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .auth-brand-copy { width: 100%; }
   .auth-brand-copy h1 { max-width: 100%; margin-bottom: 14px; font-size: clamp(44px, 4.4vw, 62px); font-weight: 650; letter-spacing: -.055em; }
   .auth-brand-copy p { max-width: 330px; color: #D4E0DC; font-size: 15px; line-height: 1.6; }
-  .auth-mascot-image { display: block; width: min(100%, 410px); max-height: 300px; margin: 0 0 -26px -12px; object-fit: contain; object-position: left center; }
+  .auth-mascot-scene { position: relative; width: min(100%, 410px); margin: 0 0 -26px -12px; }
+  .auth-mascot-image { display: block; width: 100%; max-height: 300px; object-fit: contain; object-position: left center; }
+  .auth-mascot-animated { position: absolute; right: 4%; bottom: 5%; z-index: 1; width: clamp(88px, 10vw, 132px); color: #d8ffff; filter: drop-shadow(0 8px 14px rgba(7, 32, 35, .22)); }
   .auth-side { padding: clamp(32px, 6vw, 88px); }
   .auth-side > * { width: min(424px, 100%); }
 }
