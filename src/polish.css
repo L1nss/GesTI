@@ -148,10 +148,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .auth-brand-copy { width: 100%; }
   .auth-brand-copy h1 { max-width: 100%; margin-bottom: 14px; font-size: clamp(44px, 4.4vw, 62px); font-weight: 650; letter-spacing: -.055em; }
   .auth-brand-copy p { max-width: 330px; color: #D4E0DC; font-size: 15px; line-height: 1.6; }
-  .auth-mascot { width: clamp(124px, 14vw, 158px); opacity: .96; animation: none; transform: translateY(-32px); }
+  .auth-mascot-image { display: block; width: min(100%, 410px); max-height: 300px; margin: 0 0 -26px -12px; object-fit: contain; object-position: left center; }
   .auth-side { padding: clamp(32px, 6vw, 88px); }
   .auth-side > * { width: min(424px, 100%); }
 }
+.auth-mobile-illustration { display: none; }
 .auth-card { width: min(424px, 100%); gap: 14px; }
 .auth-card h2 { font-size: clamp(27px, 2.5vw, 31px); font-weight: 650; letter-spacing: -.04em; }
 .auth-subtitle { color: var(--ink-mid); font-size: 14px; line-height: 1.5; }
@@ -180,6 +181,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .auth-mobile-brand { width: min(424px, 100%); color: var(--ink); }
   .auth-mobile-brand .brand-symbol { width: 38px; height: 38px; }
   .auth-mobile-guest { width: 46px; }
+  .auth-mobile-illustration { display: block; width: min(320px, 90vw); height: clamp(112px, 31vw, 160px); margin: -6px auto -2px; object-fit: contain; }
   .auth-card { width: min(424px, 100%); }
 }
 
