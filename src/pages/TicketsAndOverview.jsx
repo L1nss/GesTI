@@ -224,9 +224,9 @@ export function Overview({ tickets, overdueTickets, lowStock = [], pendingExpens
           <div className="hero-copy">
             <span className="hero-chip"><span className="live-dot" /> {company.name.toUpperCase()} · SISTEMA OPERACIONAL</span>
             <h2>Olá, {personName.split(" ")[0]}.</h2>
-            <p>{role === "Funcionário" ? "Acompanhe seus chamados ou abra uma nova solicitação." : "Acompanhe os chamados recentes e acesse as áreas principais."}</p>
+            <p>{role === "Funcionário" ? "Acompanhe seus chamados ou abra uma solicitação." : "Veja o que precisa de atenção na operação."}</p>
             <div className="hero-actions">
-              <button className="hero-cta" onClick={() => onNavigate("Chamados")} type="button"><span aria-hidden="true" className="cta-ripples"><span /><span /><span /></span>Abrir central de chamados <Icon name="arrow" size={17} /></button>
+              <button className="hero-cta" onClick={() => onNavigate("Chamados")} type="button"><span aria-hidden="true" className="cta-ripples"><span /><span /><span /></span>Ver chamados <Icon name="arrow" size={17} /></button>
             </div>
           </div>
         </div>

@@ -32,7 +32,7 @@ function forgetNotice() {
 function PrivacySummary({ onOpenPolicy, onOpenCookies }) {
   return <aside aria-label="Resumo de privacidade" className="privacy-summary">
     <div className="privacy-summary-heading"><span className="privacy-summary-icon"><Icon name="lock" size={14}/></span><strong>Privacidade e dados</strong></div>
-    <p>Nome, e-mail e informações da equipe são usados para manter o GesTI. Contas conectadas usam o Supabase; no modo local, os dados ficam neste navegador.</p>
+    <p>Dados da conta e da equipe são usados para operar o GesTI. Em contas conectadas, os registros ficam no Supabase; no modo local, permanecem neste navegador.</p>
     <div className="privacy-summary-actions">
       <button onClick={onOpenPolicy} type="button">Como usamos seus dados</button>
       <button onClick={onOpenCookies} type="button">Cookies</button>

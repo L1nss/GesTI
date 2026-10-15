@@ -20,7 +20,7 @@ function BrandPanel({ mascotMode = "idle", emailGaze = 0 }) {
       <div className="auth-brand-inner">
         <div className="auth-brand-lockup"><img alt="" aria-hidden="true" className="brand-symbol brand-symbol-lg" src="/gesti-mark.svg" /><strong>GesTI</strong></div>
         <div className="auth-brand-main">
-          <div className="auth-brand-copy"><h1>Sua operação<br />de TI.</h1><p>Acompanhe chamados, peças, custos e documentos da equipe.</p></div>
+          <div className="auth-brand-copy"><h1>Sua operação<br />de TI.</h1><p>Chamados, equipamentos, custos e documentos da equipe em um só lugar.</p></div>
           <GuestMascot className="auth-mascot" gaze={emailGaze} mode={mascotMode} />
         </div>
       </div>
@@ -83,7 +83,7 @@ function LoginForm({ store, onSwitch, onLoginStart, onLoginFailed, onMascotModeC
   return (
     <motion.div animate={{ opacity: 1 }} className="auth-card" initial={reduceMotion ? false : { opacity: 0 }} transition={{ duration: 0.18 }}>
       <h2>Acesse sua conta</h2>
-      <p className="auth-subtitle">Use seu e-mail corporativo e sua senha para entrar.</p>
+      <p className="auth-subtitle">Entre com seu e-mail corporativo e senha.</p>
       <form className="auth-form" onSubmit={submit}>
         <Field className={typingField === "email" ? "is-typing" : ""} label="E-mail corporativo">
           <input autoComplete="username" name="email" onBlur={() => { onMascotModeChange("idle"); onEmailGazeChange(0); }} onChange={handleEmailTyping} onFocus={() => onMascotModeChange("email")} placeholder="voce@empresa.com.br" required type="email" value={email} />
@@ -96,7 +96,7 @@ function LoginForm({ store, onSwitch, onLoginStart, onLoginFailed, onMascotModeC
         </Field>
         {error && <p className="auth-error" role="alert"><Icon name="warning" size={14} /> {error}</p>}
         <Button busy={busy} className="auth-submit" disabled={busy} type="submit">
-          {busy ? <><Icon className="spin" name="spinner" size={17} /> Verificando acesso…</> : <>Entrar</>}
+          {busy ? <><Icon className="spin" name="spinner" size={17} /> Verificando acesso…</> : <span className="auth-button-label">Entrar</span>}
         </Button>
       </form>
       {supabaseEnabled && <button className="text-link auth-recovery" disabled={resetBusy} onClick={async () => {
@@ -111,8 +111,8 @@ function LoginForm({ store, onSwitch, onLoginStart, onLoginFailed, onMascotModeC
       }} type="button">{resetBusy ? "Solicitando recuperação…" : "Esqueci minha senha"}</button>}
       <div className="auth-switch auth-switch-login">
         <span>Ainda não cadastrou sua empresa?</span>
-        <button className="auth-register-button" onClick={onSwitch} type="button">Cadastrar empresa</button>
-        {supabaseEnabled && <button className="auth-first-access-button" onClick={() => { window.location.hash = "/primeiro-acesso"; }} type="button">Já recebeu um código? Ativar acesso</button>}
+        <button className="auth-register-button" onClick={onSwitch} type="button"><span>Cadastrar empresa</span></button>
+        {supabaseEnabled && <button className="auth-first-access-button" onClick={() => { window.location.hash = "/primeiro-acesso"; }} type="button"><span>Já recebeu um código? Ativar acesso</span></button>}
       </div>
     </motion.div>
   );
@@ -158,7 +158,7 @@ function FirstAccessForm({ store, onLoginStart, onLoginFailed, onMascotModeChang
   return <motion.div animate={{ opacity: 1, y: 0 }} className="auth-card first-access-page" initial={{ opacity: 0, y: 12 }} transition={{ duration: 0.2 }}>
     <span className="panel-icon"><Icon name="lock" size={18}/></span>
     <h2>Ative seu acesso</h2>
-    <p className="auth-subtitle">Informe seu e-mail e o código recebido do administrador. Em seguida, crie sua senha.</p>
+    <p className="auth-subtitle">Informe seu e-mail e o código enviado pelo administrador. Depois, crie uma senha.</p>
     <form className="auth-form" onSubmit={submit}>
       <Field label="E-mail cadastrado"><input autoComplete="email" onChange={(event) => setClaimEmail(event.target.value)} required type="email" value={claimEmail}/></Field>
       <Field label="Código de primeiro acesso"><input autoCapitalize="characters" autoComplete="one-time-code" maxLength={14} onChange={(event) => setClaimCode(event.target.value.toUpperCase())} placeholder="12 caracteres" required value={claimCode}/></Field>

@@ -2,6 +2,7 @@ import { Component, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import "./App.css";
+import "./polish.css";
 import App, { ToastProvider } from "./App.jsx";
 import { captureAppError } from "./supabaseApi.js";
 

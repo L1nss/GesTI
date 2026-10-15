@@ -1076,18 +1076,18 @@ function Workspace({ store, theme, toggleTheme }) {
   };
 
   const pageIntro = {
-    "Visão geral": ["Central de operações", "Acompanhe o que está acontecendo no setor de TI."],
-    Chamados: ["Central de chamados", "Encontre solicitações, veja os prazos e acompanhe cada atendimento."],
-    Equipe: ["Intra-equipe", "Chat privado e calendário compartilhado da empresa."],
-    Funcionários: ["Cadastro de funcionários", "Convide pessoas para fazerem parte da equipe da empresa."],
-    Clientes: ["Cadastro de clientes", "Contatos e histórico de chamados e documentos em um só lugar."],
-    Estoque: ["Estoque de TI", "Componentes, níveis mínimos e valores para documentos demonstrativos."],
-    Registro: ["Registro geral", "Linha do tempo de documentos e chamados, com seus vínculos."],
-    Custos: ["Financeiro e compras", "Acompanhe fluxo financeiro, fornecedores, vencimentos, compras e orçamento em um só lugar."],
-    "Notas fiscais": ["Documentos de demonstração", "Registros sem valor fiscal, com itens e valores do estoque."],
-    Logs: ["Eventos do sistema", "Histórico local das ações realizadas neste navegador."],
-    Empresa: ["Empresa e equipe", "Mantenha os dados da organização e a hierarquia de acesso."],
-    Sobre: ["Sobre o GesTI", "Gestão de tecnologia da informação com clareza e responsabilidade."],
+    "Visão geral": ["Central de operações", "Veja o que acontece no setor de TI e identifique o que precisa de atenção."],
+    Chamados: ["Central de chamados", "Acompanhe solicitações, prazos e atualizações da equipe."],
+    Equipe: ["Espaço da equipe", "Converse com a equipe e consulte o calendário compartilhado."],
+    Funcionários: ["Cadastro de funcionários", "Convide pessoas e gerencie os acessos da equipe."],
+    Clientes: ["Cadastro de clientes", "Consulte contatos e o histórico de chamados e documentos."],
+    Estoque: ["Estoque de TI", "Acompanhe componentes, quantidades e níveis mínimos."],
+    Registro: ["Registro geral", "Consulte o histórico de chamados e documentos relacionados."],
+    Custos: ["Financeiro e compras", "Acompanhe despesas, compras, fornecedores e aprovações."],
+    "Notas fiscais": ["Documentos de demonstração", "Crie registros com itens e valores do estoque. Eles não têm validade fiscal."],
+    Logs: ["Eventos do sistema", "Consulte as ações realizadas neste navegador."],
+    Empresa: ["Empresa e equipe", "Atualize os dados da empresa e gerencie pessoas e níveis de acesso."],
+    Sobre: ["Sobre o GesTI", "Conheça o GesTI, suas funcionalidades e princípios de uso."],
   }[page];
 
   if (!remoteReady) return <div className="boot-screen"><img alt="" aria-hidden="true" className="brand-symbol brand-symbol-lg" src="/gesti-mark.svg" /><span className="boot-hint">{remoteError || "Carregando dados da empresa…"}</span>{remoteError && <Button onClick={() => window.location.reload()}>Tentar novamente</Button>}</div>;
@@ -1130,7 +1130,7 @@ function Workspace({ store, theme, toggleTheme }) {
                 {page === "Chamados" && <Button onClick={() => setModal("ticket")}><Icon name="plus" size={17} /> Novo chamado</Button>}
                 {page === "Estoque" && can("manageStock") && <Button onClick={() => setModal("inventory")}><Icon name="plus" size={17} /> Adicionar item</Button>}
                 {page === "Custos" && <Button onClick={() => setModal("expense")}><Icon name="plus" size={17} /> Novo lançamento</Button>}
-                {page === "Notas fiscais" && can("approve") && <Button onClick={() => setInvoiceSignal((signal) => signal + 1)}><Icon name="file" size={17} /> Criar documento de demonstração</Button>}
+                {page === "Notas fiscais" && can("approve") && <Button onClick={() => setInvoiceSignal((signal) => signal + 1)}><Icon name="file" size={17} /> Novo documento demonstrativo</Button>}
                 {page === "Visão geral" && can("viewCosts") && <Button onClick={() => setModal("report")} variant="secondary"><Icon name="file" size={16} /> Relatório mensal / PDF</Button>}
               </div></Reveal>
 
