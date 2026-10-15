@@ -100,6 +100,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .stock-list { padding: 0 18px; }
 .stock-list li { padding-block: 10px; }
 .overview-finance { min-height: 72px; border-radius: 11px; box-shadow: none; }
+.overview-health-content { display: grid; grid-template-columns: minmax(92px, 112px) minmax(0, 1fr); align-items: center; gap: 18px; padding: 2px 18px 18px; }
+.health-donut { display: grid; width: 108px; aspect-ratio: 1; place-items: center; border-radius: 50%; }
+.health-donut > span { display: grid; width: 74px; aspect-ratio: 1; align-content: center; justify-items: center; border-radius: 50%; background: var(--card); }
+.health-donut strong { color: var(--ink); font-size: 22px; line-height: 1.15; }
+.health-donut small { color: var(--ink-faint); font-size: 10px; }
+.health-legend { display: grid; gap: 13px; margin: 0; padding: 0; list-style: none; }
+.health-legend li { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 8px; color: var(--ink-mid); font-size: 11px; }
+.health-legend strong { color: var(--ink); font-size: 12px; font-weight: 650; }
+.health-dot { width: 8px; height: 8px; border-radius: 50%; }
+.health-dot-resolved { background: #8EB99A; }
+.health-dot-processing { background: #6F9CAA; }
+.health-dot-open { background: #D8AA64; }
+.health-empty { margin: 0; padding: 4px 18px 18px; color: var(--ink-faint); font-size: 12px; line-height: 1.5; }
 .overview-team, .overview-backup { margin-top: 16px; }
 
 /* Forms, lists and controls share the same quiet geometry. */
@@ -124,15 +137,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 /* Access screen */
 .auth-screen { min-height: 100svh; background: var(--paper); }
 @media (min-width: 1000px) {
-  .auth-screen { grid-template-columns: minmax(340px, .78fr) minmax(0, 1.22fr); }
-  .auth-brand { background: #1F363D; }
+  .auth-screen { grid-template-columns: minmax(400px, .88fr) minmax(0, 1.12fr); }
+  .auth-brand { position: relative; isolation: isolate; overflow: hidden; background: #1F363D; }
+  .auth-brand::after { position: absolute; right: -165px; bottom: -220px; z-index: -1; width: 440px; height: 440px; border: 1px solid rgba(158,193,163,.17); border-radius: 50%; box-shadow: 0 0 0 42px rgba(158,193,163,.035), 0 0 0 92px rgba(158,193,163,.025); content: ""; }
   .auth-brand-divider { display: none; }
-  .auth-brand-inner { min-height: 100svh; padding: clamp(30px, 5vw, 68px); }
-  .auth-brand-main { grid-template-columns: minmax(0, 1fr); justify-items: start; gap: 22px; padding: 48px 0; }
+  .auth-brand-inner { min-height: 100svh; padding: clamp(34px, 4.5vw, 68px); }
+  .auth-brand-lockup { gap: 13px; }
+  .auth-brand-lockup strong { font-size: 19px; }
+  .auth-brand-main { grid-template-columns: minmax(0, 1fr); justify-items: start; gap: 20px; width: min(100%, 520px); margin: auto auto 112px; padding: 40px 0; transform: translateY(-38px); }
   .auth-brand-copy { width: 100%; }
-  .auth-brand-copy h1 { max-width: 100%; margin-bottom: 14px; font-size: clamp(38px, 4vw, 52px); font-weight: 650; letter-spacing: -.055em; }
+  .auth-brand-copy h1 { max-width: 100%; margin-bottom: 14px; font-size: clamp(44px, 4.4vw, 62px); font-weight: 650; letter-spacing: -.055em; }
   .auth-brand-copy p { max-width: 330px; color: #D4E0DC; font-size: 15px; line-height: 1.6; }
-  .auth-mascot { width: 78px; opacity: .9; }
+  .auth-mascot { width: clamp(124px, 14vw, 158px); opacity: .96; animation: none; transform: translateY(-32px); }
   .auth-side { padding: clamp(32px, 6vw, 88px); }
   .auth-side > * { width: min(424px, 100%); }
 }
@@ -195,6 +211,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .dashboard-grid .table-scroll th:nth-child(3) { width: 27%; }
   .dashboard-grid .table-scroll th:nth-child(4) { width: 30%; }
   .dashboard-grid .badge { white-space: normal; text-align: center; }
+  .overview-health-content { grid-template-columns: minmax(84px, 102px) minmax(0, 1fr); gap: 16px; }
+  .health-donut { width: 96px; }
+  .health-donut > span { width: 66px; }
   .page-heading > .button, .page-heading > div:last-child { max-width: 100%; }
   .auth-side { align-content: center; gap: 20px; padding-inline: 20px; }
   .auth-card { gap: 13px; }

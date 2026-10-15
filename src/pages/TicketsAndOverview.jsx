@@ -206,6 +206,11 @@ export function TeamMetrics({ tickets }) {
 export function Overview({ tickets, overdueTickets, lowStock = [], pendingExpenses = [], onNavigate, company, personName, role, canSeeFinances, canBackup, onBackupExport, onBackupImport, backupBusy, remoteAuth = false, dashboardMetrics = ["open", "overdue", "processing"], onDashboardMetricsChange = () => {} }) {
   const openTickets = tickets.filter((ticket) => ticket.status === "Aberto").length;
   const processingTickets = tickets.filter((ticket) => ticket.status === "Em processamento").length;
+  const resolvedTickets = tickets.filter((ticket) => ticket.status === "Resolvido").length;
+  const totalStatusTickets = openTickets + processingTickets + resolvedTickets;
+  const openShare = totalStatusTickets ? openTickets / totalStatusTickets * 100 : 0;
+  const processingShare = totalStatusTickets ? processingTickets / totalStatusTickets * 100 : 0;
+  const resolvedShare = totalStatusTickets ? resolvedTickets / totalStatusTickets * 100 : 0;
   const recentTickets = [...tickets].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 4);
   const [editingMetrics, setEditingMetrics] = useState(false);
   const metricCatalog = [
@@ -243,6 +248,17 @@ export function Overview({ tickets, overdueTickets, lowStock = [], pendingExpens
         {(role !== "Funcionário" || canSeeFinances) && <div className="side-stack">
           {role !== "Funcionário" && <section className="panel stock-panel"><div className="panel-heading"><div><h2>Estoque</h2><p>{lowStock.length ? `${lowStock.length} ${lowStock.length === 1 ? "item precisa" : "itens precisam"} de reposição` : "Nenhum item abaixo do mínimo"}</p></div><span className="panel-icon amber-icon"><Icon name="box" /></span></div>{lowStock.length > 0 && <ul className="stock-list">{lowStock.slice(0, 3).map((item) => <li key={item.id}><span className="stock-bullet" /><span className="stock-info"><strong>{item.name}</strong><small>{item.category} · mínimo {item.minimum} un.</small></span><Badge tone="amber">{item.quantity} un.</Badge></li>)}</ul>}<button className="subtle-link stock-action" onClick={() => onNavigate("Estoque")} type="button">Ver estoque <Icon name="arrow" size={15} /></button></section>}
           {canSeeFinances && <button className="panel overview-finance" onClick={() => onNavigate("Custos")} type="button"><span className="metric-icon metric-green"><Icon name="receipt" size={19} /></span><span><strong>{pendingExpenses.length}</strong><small>despesas aguardando análise</small></span><Icon name="arrow" size={16} /></button>}
+          <section aria-label="Saúde da operação" className="panel overview-health">
+            <div className="panel-heading"><div><h2>Saúde da operação</h2><p>Chamados distribuídos por status</p></div></div>
+            {totalStatusTickets ? <div className="overview-health-content">
+              <div aria-label={`${resolvedTickets} resolvidos, ${processingTickets} em atendimento e ${openTickets} em aberto`} className="health-donut" role="img" style={{ background: `conic-gradient(#8EB99A 0% ${resolvedShare}%, #6F9CAA ${resolvedShare}% ${resolvedShare + processingShare}%, #D8AA64 ${resolvedShare + processingShare}% 100%)` }}><span><strong>{totalStatusTickets}</strong><small>chamados</small></span></div>
+              <ul className="health-legend">
+                <li><span className="health-dot health-dot-resolved" /><span>Resolvidos</span><strong>{resolvedTickets}</strong></li>
+                <li><span className="health-dot health-dot-processing" /><span>Em atendimento</span><strong>{processingTickets}</strong></li>
+                <li><span className="health-dot health-dot-open" /><span>Em aberto</span><strong>{openTickets}</strong></li>
+              </ul>
+            </div> : <p className="health-empty">Os indicadores aparecem aqui quando houver chamados.</p>}
+          </section>
         </div>}
       </div></Reveal>
       {canBackup && <details className="overview-backup"><summary>{remoteAuth ? "Exportar dados" : "Backup e restauração"}</summary><section className="panel backup-panel"><div><strong>Proteção dos dados</strong><p>{remoteAuth ? "Baixe uma cópia dos dados acessíveis nesta empresa. A restauração do Supabase deve ser feita pela administração do banco." : "Baixe uma cópia desta empresa ou restaure um backup feito no GesTI."}</p></div><div className="backup-actions"><button className="button button-secondary" onClick={onBackupExport} type="button"><Icon name="download" size={15} /> {remoteAuth ? "Baixar cópia" : "Baixar backup"}</button>{!remoteAuth && <label className="button button-secondary">{backupBusy ? "Restaurando…" : "Restaurar backup"}<input accept="application/json,.json" disabled={backupBusy} hidden onChange={onBackupImport} type="file" /></label>}</div></section></details>}
