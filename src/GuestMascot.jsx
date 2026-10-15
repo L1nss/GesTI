@@ -45,13 +45,6 @@ export default function GuestMascot({ mode = "idle", gaze = 0, className = "", p
           <path d="M166 132c2-5-1-10-6-12l-7-3c-5-2-10 1-11 5l-2 6c-1 4 1 8 5 10l7 3c5 2 10 0 12-4l2-5Z" fill="#d6e7e3" stroke="#2c666e" strokeLinejoin="round" strokeWidth="3" />
           <path d="m157 124-8 10m13-4-8 9" stroke="#90bcb8" strokeLinecap="round" strokeWidth="2" />
         </g>
-        <g className="guest-password-sheet">
-          <path d="M76 83h62l8 8v57H76V83Z" fill="#fff" stroke="#4f8e8e" strokeLinejoin="round" strokeWidth="3" />
-          <path d="M138 83v9h8" fill="#d6e7e3" stroke="#4f8e8e" strokeLinejoin="round" strokeWidth="2" />
-          <circle cx="91" cy="104" r="4" fill="#5ca9a5" />
-          <path d="M102 104h31m-42 12h42m-42 9h36" stroke="#a7c7c5" strokeLinecap="round" strokeWidth="3" />
-          <path d="M90 137h37" stroke="#4f8e8e" strokeLinecap="round" strokeWidth="2" opacity=".65" />
-        </g>
       </svg>
       {className.includes("auth-mascot") && <span>Guest</span>}
     </span>

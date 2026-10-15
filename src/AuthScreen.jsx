@@ -11,17 +11,17 @@ import { supabaseClaimEmployeeRegistration, supabaseCompleteRecovery, supabaseCo
 const recoveryFromLink = supabaseConsumeRecoveryLink();
 const passwordlessFromLink = supabaseConsumePasswordlessLink();
 
-function LoginGuestScene({ mode, gaze = 0, className }) {
+function LoginGuestScene({ className }) {
   return (
-    <div aria-label="Guest, mascote impressora GesTI ao lado de um notebook e uma planta" className={className} data-mascot-mode={mode} role="img">
+    <div aria-label="Guest, mascote impressora GesTI ao lado de um notebook e uma planta" className={className} role="img">
       <img alt="" aria-hidden="true" className="auth-scene-art" src={loginScene} />
-      <GuestMascot className="auth-scene-guest" gaze={gaze} mode={mode} paperLabel="G" />
+      <GuestMascot className="auth-scene-guest" mode="idle" paperLabel="G" />
       <span aria-hidden="true" className="auth-scene-guest-label">Guest</span>
     </div>
   );
 }
 
-function BrandPanel({ mascotMode = "idle", emailGaze = 0 }) {
+function BrandPanel() {
   return (
     <aside aria-label="GesTI" className="auth-brand">
       <svg aria-hidden="true" className="auth-brand-divider" preserveAspectRatio="none" viewBox="0 0 100 1000">
@@ -32,14 +32,14 @@ function BrandPanel({ mascotMode = "idle", emailGaze = 0 }) {
         <div className="auth-brand-lockup"><img alt="" aria-hidden="true" className="brand-symbol brand-symbol-lg" src="/gesti-mark.svg" /><strong>GesTI</strong></div>
         <div className="auth-brand-main">
           <div className="auth-brand-copy"><h1>Sua operação<br />de TI.</h1><p>Chamados, equipamentos, custos e documentos da equipe em um só lugar.</p></div>
-          <LoginGuestScene className="auth-mascot-scene" gaze={emailGaze} mode={mascotMode} />
+          <LoginGuestScene className="auth-mascot-scene" />
         </div>
       </div>
     </aside>
   );
 }
 
-function LoginForm({ store, onSwitch, onLoginStart, onLoginFailed, onMascotModeChange, onEmailGazeChange }) {
+function LoginForm({ store, onSwitch, onLoginStart, onLoginFailed }) {
   const notify = useToast();
   const reduceMotion = useReducedMotion();
   const [email, setEmail] = useState("");
@@ -60,13 +60,6 @@ function LoginForm({ store, onSwitch, onLoginStart, onLoginFailed, onMascotModeC
     typingTimer.current = window.setTimeout(() => {
       setTypingField("");
     }, 220);
-  };
-
-  const handleEmailTyping = (event) => {
-    handleTyping("email", setEmail)(event);
-    const value = event.currentTarget.value;
-    const cursor = event.currentTarget.selectionStart ?? value.length;
-    onEmailGazeChange(value ? ((cursor / Math.max(value.length, 1)) * 2) - 1 : 0);
   };
 
   const submit = async (event) => {
@@ -97,11 +90,11 @@ function LoginForm({ store, onSwitch, onLoginStart, onLoginFailed, onMascotModeC
       <p className="auth-subtitle">Entre com seu e-mail corporativo e senha.</p>
       <form className="auth-form" onSubmit={submit}>
         <Field className={typingField === "email" ? "is-typing" : ""} label="E-mail corporativo">
-          <input autoComplete="username" name="email" onBlur={() => { onMascotModeChange("idle"); onEmailGazeChange(0); }} onChange={handleEmailTyping} onFocus={() => onMascotModeChange("email")} placeholder="voce@empresa.com.br" required type="email" value={email} />
+          <input autoComplete="username" name="email" onChange={handleTyping("email", setEmail)} placeholder="voce@empresa.com.br" required type="email" value={email} />
         </Field>
         <Field className={typingField === "password" ? "is-typing" : ""} label="Senha">
           <div className="password-wrap">
-            <input autoComplete="current-password" name="password" onBlur={() => onMascotModeChange("idle")} onChange={handleTyping("password", setPassword)} onFocus={() => onMascotModeChange("password")} placeholder="••••••••" required type={showPassword ? "text" : "password"} value={password} />
+            <input autoComplete="current-password" name="password" onChange={handleTyping("password", setPassword)} placeholder="••••••••" required type={showPassword ? "text" : "password"} value={password} />
             <button aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} className="password-eye" onClick={() => setShowPassword((current) => !current)} type="button"><Icon name={showPassword ? "eyeOff" : "eye"} size={16} /></button>
           </div>
         </Field>
@@ -129,7 +122,7 @@ function LoginForm({ store, onSwitch, onLoginStart, onLoginFailed, onMascotModeC
   );
 }
 
-function FirstAccessForm({ store, onLoginStart, onLoginFailed, onMascotModeChange, onReturn }) {
+function FirstAccessForm({ store, onLoginStart, onLoginFailed, onReturn }) {
   const notify = useToast();
   const [claimEmail, setClaimEmail] = useState("");
   const [claimCode, setClaimCode] = useState("");
@@ -173,8 +166,8 @@ function FirstAccessForm({ store, onLoginStart, onLoginFailed, onMascotModeChang
     <form className="auth-form" onSubmit={submit}>
       <Field label="E-mail cadastrado"><input autoComplete="email" onChange={(event) => setClaimEmail(event.target.value)} required type="email" value={claimEmail}/></Field>
       <Field label="Código de primeiro acesso"><input autoCapitalize="characters" autoComplete="one-time-code" maxLength={14} onChange={(event) => setClaimCode(event.target.value.toUpperCase())} placeholder="12 caracteres" required value={claimCode}/></Field>
-      <Field label="Crie sua senha"><input autoComplete="new-password" minLength={8} onBlur={() => onMascotModeChange("idle")} onChange={(event) => setClaimPassword(event.target.value)} onFocus={() => onMascotModeChange("password")} required type="password" value={claimPassword}/></Field>
-      <Field label="Confirme sua senha"><input autoComplete="new-password" minLength={8} onBlur={() => onMascotModeChange("idle")} onChange={(event) => setClaimConfirm(event.target.value)} onFocus={() => onMascotModeChange("password")} required type="password" value={claimConfirm}/></Field>
+      <Field label="Crie sua senha"><input autoComplete="new-password" minLength={8} onChange={(event) => setClaimPassword(event.target.value)} required type="password" value={claimPassword}/></Field>
+      <Field label="Confirme sua senha"><input autoComplete="new-password" minLength={8} onChange={(event) => setClaimConfirm(event.target.value)} required type="password" value={claimConfirm}/></Field>
       {claimError && <p className="auth-error" role="alert"><Icon name="warning" size={14}/>{claimError}</p>}
       <Button busy={busy} className="auth-submit" disabled={busy} type="submit">{busy ? "Preparando seu acesso…" : "Criar senha e entrar"}</Button>
     </form>
@@ -344,8 +337,6 @@ export default function AuthScreen({ store, onLoginStart, onLoginFailed }) {
   const [recoveryPassword, setRecoveryPassword] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
   const [recoveryBusy, setRecoveryBusy] = useState(false);
-  const [mascotMode, setMascotMode] = useState("idle");
-  const [emailGaze, setEmailGaze] = useState(0);
   useEffect(() => {
     const syncFirstAccessRoute = () => setMode((current) => {
       if (isFirstAccessRoute(window.location.hash)) return "claim";
@@ -360,16 +351,16 @@ export default function AuthScreen({ store, onLoginStart, onLoginFailed }) {
   };
   return (
     <div className="auth-screen">
-      <BrandPanel emailGaze={emailGaze} mascotMode={mascotMode} />
+      <BrandPanel />
       <div className="auth-side">
         <div className="auth-mobile-brand"><img alt="" aria-hidden="true" className="brand-symbol" src="/gesti-mark.svg" /><strong>GesTI</strong></div>
-        <LoginGuestScene className="auth-mobile-illustration" gaze={emailGaze} mode={mascotMode} />
+        <LoginGuestScene className="auth-mobile-illustration" />
         <AnimatePresence mode="wait" initial={false}>
           <motion.div animate={{ opacity: 1 }} exit={{ opacity: 0 }} initial={{ opacity: 0 }} key={mode} transition={{ duration: 0.16 }}>
             {mode === "recovery" ? <div className="auth-card"><h2>Definir nova senha</h2><p className="auth-subtitle">Use pelo menos 8 caracteres.</p><form className="auth-form" onSubmit={async (event) => { event.preventDefault(); setRecoveryBusy(true); setRecoveryError(""); try { await supabaseCompleteRecovery(recoveryPassword); setMode("login"); } catch (error) { setRecoveryError(error.message || "Não foi possível trocar a senha."); } finally { setRecoveryBusy(false); } }}><Field label="Nova senha"><input autoComplete="new-password" minLength={8} onChange={(event) => setRecoveryPassword(event.target.value)} required type="password" value={recoveryPassword} /></Field>{recoveryError && <p className="auth-error" role="alert">{recoveryError}</p>}<Button disabled={recoveryBusy} type="submit">{recoveryBusy ? "Salvando…" : "Salvar nova senha"}</Button></form></div>
-              : mode === "claim" ? <FirstAccessForm onLoginFailed={onLoginFailed} onLoginStart={onLoginStart} onMascotModeChange={setMascotMode} onReturn={returnToLogin} store={store} />
+              : mode === "claim" ? <FirstAccessForm onLoginFailed={onLoginFailed} onLoginStart={onLoginStart} onReturn={returnToLogin} store={store} />
               : mode === "first-access" ? <PasswordlessCompletion store={store} /> : mode === "login"
-              ? <LoginForm onEmailGazeChange={setEmailGaze} onLoginFailed={onLoginFailed} onLoginStart={onLoginStart} onSwitch={() => { setMascotMode("idle"); setMode("register"); }} onMascotModeChange={setMascotMode} store={store} />
+              ? <LoginForm onLoginFailed={onLoginFailed} onLoginStart={onLoginStart} onSwitch={() => setMode("register")} store={store} />
               : <RegisterForm onSwitch={() => setMode("login")} store={store} />}
           </motion.div>
         </AnimatePresence>
