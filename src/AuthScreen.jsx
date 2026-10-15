@@ -18,7 +18,7 @@ function BrandPanel({ mascotMode = "idle", emailGaze = 0 }) {
         <path d="M100 0C52 160 16 335 16 500s36 340 84 500" fill="none" stroke="#07393c" strokeWidth="1.4" />
       </svg>
       <div className="auth-brand-inner">
-        <div className="auth-brand-lockup"><img alt="" aria-hidden="true" className="brand-symbol brand-symbol-lg" src="/gesti-mark-primary.png" /><strong>Gesti</strong></div>
+        <div className="auth-brand-lockup"><img alt="" aria-hidden="true" className="brand-symbol brand-symbol-lg" src="/gesti-mark.svg" /><strong>GesTI</strong></div>
         <div className="auth-brand-main">
           <div className="auth-brand-copy"><h1>Sua operação<br />de TI.</h1><p>Acompanhe chamados, peças, custos e documentos da equipe.</p></div>
           <GuestMascot className="auth-mascot" gaze={emailGaze} mode={mascotMode} />
@@ -351,7 +351,7 @@ export default function AuthScreen({ store, onLoginStart, onLoginFailed }) {
     <div className="auth-screen">
       <BrandPanel emailGaze={emailGaze} mascotMode={mascotMode} />
       <div className="auth-side">
-        <div className="auth-mobile-brand"><img alt="" aria-hidden="true" className="brand-symbol" src="/gesti-mark-primary.png" /><strong>Gesti</strong><GuestMascot className="auth-mobile-guest" gaze={emailGaze} mode={mascotMode} /></div>
+        <div className="auth-mobile-brand"><img alt="" aria-hidden="true" className="brand-symbol" src="/gesti-mark.svg" /><strong>GesTI</strong><GuestMascot className="auth-mobile-guest" gaze={emailGaze} mode={mascotMode} /></div>
         <AnimatePresence mode="wait" initial={false}>
           <motion.div animate={{ opacity: 1 }} exit={{ opacity: 0 }} initial={{ opacity: 0 }} key={mode} transition={{ duration: 0.16 }}>
             {mode === "recovery" ? <div className="auth-card"><h2>Definir nova senha</h2><p className="auth-subtitle">Use pelo menos 8 caracteres.</p><form className="auth-form" onSubmit={async (event) => { event.preventDefault(); setRecoveryBusy(true); setRecoveryError(""); try { await supabaseCompleteRecovery(recoveryPassword); setMode("login"); } catch (error) { setRecoveryError(error.message || "Não foi possível trocar a senha."); } finally { setRecoveryBusy(false); } }}><Field label="Nova senha"><input autoComplete="new-password" minLength={8} onChange={(event) => setRecoveryPassword(event.target.value)} required type="password" value={recoveryPassword} /></Field>{recoveryError && <p className="auth-error" role="alert">{recoveryError}</p>}<Button disabled={recoveryBusy} type="submit">{recoveryBusy ? "Salvando…" : "Salvar nova senha"}</Button></form></div>

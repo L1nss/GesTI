@@ -2,35 +2,12 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/gesti-mark-primary.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f1f1f1" />
     <meta name="description" content="Gesti: gestão de chamados, estoque e prestação de contas para equipes de TI." />
-    <title>Gesti | Gestão de TI</title>
-    <script>
-      (function () {
-        try {
-          var saved = JSON.parse(window.localStorage.getItem("tigest-theme") || "null");
-          var theme = saved === "dark" || saved === "light"
-            ? saved
-            : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-          document.documentElement.dataset.theme = theme;
-        } catch (error) {}
-      })();
-    </script>
-    <script>
-      window.addEventListener("vite:preloadError", function (event) {
-        event.preventDefault();
-        var recoveryKey = "gesti:chunk-recovery:" + window.location.pathname;
-        try {
-          var previousAttempt = Number(window.sessionStorage.getItem(recoveryKey) || 0);
-          if (Date.now() - previousAttempt > 15000) {
-            window.sessionStorage.setItem(recoveryKey, String(Date.now()));
-            window.location.reload();
-          }
-        } catch (error) {}
-      });
-    </script>
+    <title>GesTI | Gestão de TI</title>
+    <script src="/bootstrap.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />

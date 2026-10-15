@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSavedState } from "./hooks.js";
 import { keepWithinRetention } from "./retention.js";
-import { SLA_BY_PRIORITY, today } from "./utils.js";
+import { normalizeDisplayName, SLA_BY_PRIORITY, today } from "./utils.js";
 import { hasSupabaseSession, restRpc, restSelect, restUpdate, supabaseEnabled, supabaseGetUser, supabaseSignIn, supabaseSignOut, supabaseSignUp, supabaseUpdatePassword, supabaseSendPasswordReset, writeAuditEvent } from "./supabaseApi.js";
 
 /* =====================================================================
@@ -17,6 +17,7 @@ const ORGS_KEY = "tigest-orgs-v1";
 const SESSION_KEY = "tigest-session-v2";
 const EVENTS_KEY = "tigest-events-v1";
 const LOGS_KEY = "tigest-logs-v1";
+const localBackendEnabled = import.meta.env.DEV && !supabaseEnabled;
 const persistOrganizations = (items) => items.map((item) => /^[0-9a-f-]{36}$/i.test(item.id)
   ? { id: item.id, company: { name: item.company?.name || "Empresa" }, people: [], tickets: [], clients: [], inventory: [], services: [], expenses: [], invoices: [], movementLog: [], suppliers: [], budgets: [], replyTemplates: [] }
   : item);
@@ -306,7 +307,13 @@ export function logEvent(orgId, actor, action, details = "", level = "info") {
 /* ------------------------------ migração de dados ------------------------------ */
 
 function migratePeople(people) {
-  return (Array.isArray(people) ? people : []).filter((person) => person && typeof person === "object");
+  return (Array.isArray(people) ? people : [])
+    .filter((person) => person && typeof person === "object")
+    .map((person) => {
+      const email = typeof person.email === "string" ? person.email : "";
+      const name = normalizeDisplayName(person.name, email);
+      return { ...person, name, email, role: typeof person.role === "string" && person.role ? person.role : "Funcionário" };
+    });
 }
 
 /* Migração leve: garante services/history em organizações criadas
@@ -465,8 +472,13 @@ export function useStore() {
   const session = useMemo(() => {
     if (!savedSession) return null;
     if (savedSession.backend === "supabase" && !hasSupabaseSession()) return null;
+    if (savedSession.backend !== "supabase" && !localBackendEnabled) return null;
     return savedSession;
   }, [savedSession]);
+
+  useEffect(() => {
+    if (savedSession && savedSession.backend !== "supabase" && !localBackendEnabled) setSession(null);
+  }, [savedSession, setSession]);
 
   useEffect(() => {
     if (!savedSession) return undefined;
@@ -494,10 +506,10 @@ export function useStore() {
       if (retainedEvents.length !== events.length) window.localStorage.setItem(EVENTS_KEY, JSON.stringify(retainedEvents));
     } catch { /* mantém o restante do workspace mesmo se o log local estiver corrompido */ }
     readLogs();
-    if (!orgs.length) {
+    if (!orgs.length && localBackendEnabled) {
       setOrgs([seedOrg()]);
       pushEvent("ORG-001", "Empresa demonstrativa Acme Tecnologia provisionada");
-    } else {
+    } else if (orgs.length) {
       setOrgs((current) => current.map(migrateOrg));
     }
     const readyTimer = window.setTimeout(() => setSeeded(true), 0);
@@ -525,20 +537,22 @@ export function useStore() {
 
   const login = useCallback(async (email, password, useCurrentSession = false) => {
     /* Bloqueio simples de força bruta. */
-    try {
-      const attempt = JSON.parse(window.localStorage.getItem("tigest-login-attempts") ?? "null");
-      if (attempt?.until && Date.now() < attempt.until) {
-        const seconds = Math.ceil((attempt.until - Date.now()) / 1000);
-        return { ok: false, error: `Muitas tentativas. Aguarde ${seconds} s e tente novamente.` };
+    if (localBackendEnabled) {
+      try {
+        const attempt = JSON.parse(window.localStorage.getItem("tigest-login-attempts") ?? "null");
+        if (attempt?.until && Date.now() < attempt.until) {
+          const seconds = Math.ceil((attempt.until - Date.now()) / 1000);
+          return { ok: false, error: `Muitas tentativas. Aguarde ${seconds} s e tente novamente.` };
+        }
+      } catch {
+        // Sem registro de tentativas: segue o fluxo.
       }
-    } catch {
-      // Sem registro de tentativas: segue o fluxo.
     }
 
     const normalized = String(email).trim().toLowerCase();
     let authenticated = null;
     let remoteError = "";
-    for (const candidate of orgs.filter((item) => !/^[0-9a-f-]{36}$/i.test(item.id))) {
+    for (const candidate of (localBackendEnabled ? orgs : []).filter((item) => !/^[0-9a-f-]{36}$/i.test(item.id))) {
       const person = candidate.people.find((item) => String(item.login || item.email).toLowerCase() === normalized);
       if (person && await verifyPassword(password, person.passwordHash)) {
         authenticated = { candidate, person };
@@ -552,6 +566,7 @@ export function useStore() {
           if (!hasSupabaseSession()) throw new Error("O acesso expirou. Peça ao administrador um novo código de primeiro acesso.");
         } else await supabaseSignIn(String(email).trim().toLowerCase(), password);
         const user = await supabaseGetUser();
+        const displayName = normalizeDisplayName(user.user_metadata?.display_name, user.email);
         const firstLoginCompanyId = await restRpc("activate_employee_first_login", {});
         let memberships = await restSelect("memberships", `user_id=eq.${user.id}`);
         let membership = (firstLoginCompanyId && memberships.find((item) => item.company_id === firstLoginCompanyId)) || memberships[0];
@@ -573,8 +588,8 @@ export function useStore() {
         const remoteOrg = existing || {
           id: remoteCompany.id,
           company: { name: remoteCompany.name, ...(remoteCompany.profile_data || {}), ...(remoteCompany.branding || {}) },
-          admin: { name: membership.display_name, email: user.email, role: membership.role },
-          people: [{ id: user.id, name: membership.display_name, email: user.email, role: membership.role, capabilities: membership.capabilities || {}, available: false }],
+          admin: { name: membership.display_name || displayName, email: user.email, role: membership.role },
+          people: [{ id: user.id, name: membership.display_name || displayName, email: user.email, role: membership.role, capabilities: membership.capabilities || {}, available: false }],
           tickets: [], inventory: [], services: [], expenses: [], invoices: [], movementLog: [], suppliers: [], budgets: [], replyTemplates: [],
           createdAt: remoteCompany.created_at,
         };
@@ -582,37 +597,45 @@ export function useStore() {
           ...item,
           company: { ...item.company, name: remoteCompany.name, ...(remoteCompany.profile_data || {}), ...(remoteCompany.branding || {}) },
           people: item.people.some((person) => person.id === user.id)
-            ? item.people.map((person) => person.id === user.id ? { ...person, name: membership.display_name, role: membership.role, capabilities: membership.capabilities || {} } : person)
-            : [...item.people, { id: user.id, name: membership.display_name, email: user.email, role: membership.role, capabilities: membership.capabilities || {} }],
+            ? item.people.map((person) => person.id === user.id ? { ...person, name: membership.display_name || displayName, email: user.email, role: membership.role, capabilities: membership.capabilities || {} } : person)
+            : [...item.people, { id: user.id, name: membership.display_name || displayName, email: user.email, role: membership.role, capabilities: membership.capabilities || {} }],
         } : item) : [...current, remoteOrg]);
         if (firstLoginCompanyId) void writeAuditEvent(firstLoginCompanyId, user.id, "membership.first_login_activated", "membership", user.id, { role: membership.role });
-        setSession({ orgId: remoteCompany.id, email: user.email, name: membership.display_name, role: membership.role, userId: user.id, requiresPasswordSetup: membership.password_setup_required === true, at: new Date().toISOString(), backend: "supabase" });
-        pushEvent(remoteCompany.id, `${membership.display_name} entrou no GesTI via Supabase`);
-        return { ok: true, person: { name: membership.display_name }, company: remoteCompany.name };
+        setSession({ orgId: remoteCompany.id, email: user.email, name: membership.display_name || displayName, role: membership.role, userId: user.id, requiresPasswordSetup: membership.password_setup_required === true, at: new Date().toISOString(), backend: "supabase" });
+        pushEvent(remoteCompany.id, `${membership.display_name || displayName} entrou no GesTI via Supabase`);
+        return { ok: true, person: { name: membership.display_name || displayName }, company: remoteCompany.name };
       } catch (error) {
         remoteError = error?.message || "Não foi possível acessar o Supabase. Tente novamente.";
       }
     }
 
+    if (!authenticated && !supabaseEnabled && !localBackendEnabled) {
+      return { ok: false, error: "O acesso local está disponível somente durante o desenvolvimento. Configure o Supabase para publicar o sistema." };
+    }
+
     if (!authenticated) {
       try {
-        const attempt = JSON.parse(window.localStorage.getItem("tigest-login-attempts") ?? "null") || { count: 0 };
-        attempt.count = (attempt.count || 0) + 1;
-        if (attempt.count >= LOGIN_MAX_ATTEMPTS) {
-          attempt.until = Date.now() + LOGIN_COOLDOWN_MS;
-          attempt.count = 0;
+        if (localBackendEnabled) {
+          const attempt = JSON.parse(window.localStorage.getItem("tigest-login-attempts") ?? "null") || { count: 0 };
+          attempt.count = (attempt.count || 0) + 1;
+          if (attempt.count >= LOGIN_MAX_ATTEMPTS) {
+            attempt.until = Date.now() + LOGIN_COOLDOWN_MS;
+            attempt.count = 0;
+          }
+          window.localStorage.setItem("tigest-login-attempts", JSON.stringify(attempt));
         }
-        window.localStorage.setItem("tigest-login-attempts", JSON.stringify(attempt));
       } catch {
         // Best-effort.
       }
       return { ok: false, error: remoteError || "E-mail ou senha inválidos. Verifique com o administrador da sua empresa." };
     }
 
-    try {
-      window.localStorage.removeItem("tigest-login-attempts");
-    } catch {
-      // Best-effort.
+    if (localBackendEnabled) {
+      try {
+        window.localStorage.removeItem("tigest-login-attempts");
+      } catch {
+        // Best-effort.
+      }
     }
 
     const { candidate, person } = authenticated;
@@ -639,6 +662,9 @@ export function useStore() {
   const loginWithCurrentSession = useCallback((email) => login(email, "", true), [login]);
 
   const registerCompany = useCallback(async (data) => {
+    if (!supabaseEnabled && !localBackendEnabled) {
+      return { ok: false, error: "O cadastro local está disponível somente durante o desenvolvimento. Configure o Supabase para publicar o sistema." };
+    }
     const documentDigits = String(data.document).replace(/\D/g, "");
     if (orgs.some((candidate) => String(candidate.company.document).replace(/\D/g, "") === documentDigits)) {
       return { ok: false, error: "Este CNPJ já possui um workspace cadastrado." };

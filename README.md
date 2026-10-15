@@ -59,7 +59,9 @@ src/
 - Senhas com **PBKDF2-SHA256** (WebCrypto, 210 mil iterações, salt aleatório por usuário); contas antigas migram automaticamente no primeiro login.
 - Sessão expira após **12 horas**; bloqueio de força bruta no login (5 tentativas → 30 s de espera).
 - Troca da própria senha e redefinição pela administração na aba Empresa.
-- O armazenamento é local ao navegador por design (protótipo); erros de quota são sinalizados ao usuário em vez de silenciados.
+- O modo com armazenamento local é exclusivo do ambiente de desenvolvimento. Em produção, o login exige Supabase configurado e falha de forma segura se ele estiver ausente.
+- Em produção, configure Supabase Auth e ative a proteção contra senhas vazadas nas configurações de segurança de autenticação do projeto.
+- Erros de quota do armazenamento local são sinalizados ao usuário em vez de silenciados.
 
 ## Qualidade
 

@@ -9,14 +9,14 @@ export default function LoginWelcome({ onComplete }) {
   useEffect(() => {
     const timers = [];
     if (reduceMotion) {
-      timers.push(window.setTimeout(() => setPhase("fade"), 1100));
-      timers.push(window.setTimeout(onComplete, 1450));
+      timers.push(window.setTimeout(() => setPhase("fade"), 2200));
+      timers.push(window.setTimeout(onComplete, 2600));
     } else {
-      timers.push(window.setTimeout(() => setPhase("catching"), 850));
-      timers.push(window.setTimeout(() => setPhase("throwing"), 1450));
-      timers.push(window.setTimeout(() => setPhase("welcome"), 2180));
-      timers.push(window.setTimeout(() => setPhase("fade"), 3000));
-      timers.push(window.setTimeout(onComplete, 3450));
+      timers.push(window.setTimeout(() => setPhase("catching"), 950));
+      timers.push(window.setTimeout(() => setPhase("throwing"), 1650));
+      timers.push(window.setTimeout(() => setPhase("welcome"), 2350));
+      timers.push(window.setTimeout(() => setPhase("fade"), 4300));
+      timers.push(window.setTimeout(onComplete, 4700));
     }
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [onComplete, reduceMotion]);
@@ -28,8 +28,9 @@ export default function LoginWelcome({ onComplete }) {
         <div className="login-welcome-paper">
           <span className="login-welcome-brand">Gesti</span>
           <div className="login-welcome-message">
-            <h1>Bem-vindo!</h1>
-            <p>Sua tela inicial está pronta.</p>
+            <GuestMascot className="login-welcome-portrait" />
+            <h1>Bem-vindo(a)!</h1>
+            <p>Que bom ter você de volta. Sua tela inicial está pronta.</p>
           </div>
         </div>
       </div>

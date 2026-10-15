@@ -1,3 +1,4 @@
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Icon } from "./shared.jsx";
 
@@ -24,6 +25,7 @@ function NavIcon({ name }) {
    própria sidebar) abre; retirar o mouse fecha. No mobile o comportamento
    continua por toque, com backdrop e botão de menu no topo. */
 export function SideBar({ aberta, aoFechar, aoEntrar, aoSair, paginaAtiva, aoNavegar, paginas, contagens, onNotificacoes, onLogout, empresaNome, backend }) {
+  const reduceMotion = useReducedMotion();
   const [moreOpen, setMoreOpen] = useState(false);
   const primaryPages = paginas.filter((page) => ["Visão geral", "Chamados", "Estoque", "Custos"].includes(page));
   const secondaryPages = paginas.filter((page) => !primaryPages.includes(page));
@@ -44,12 +46,14 @@ export function SideBar({ aberta, aoFechar, aoEntrar, aoSair, paginaAtiva, aoNav
       {/* Faixa invisível na borda esquerda (apenas desktop via CSS): dispara
           a abertura quando o mouse encosta na margem com o menu recolhido. */}
       {!aberta && aoEntrar && <div aria-hidden="true" className="sidebar-hover-strip" onMouseEnter={aoEntrar} />}
-      {aberta && <button aria-label="Fechar menu" className="sidebar-backdrop" onClick={aoFechar} type="button" />}
+      <AnimatePresence initial={false}>
+        {aberta && <motion.button aria-label="Fechar menu" animate={{ opacity: 1 }} className="sidebar-backdrop" exit={{ opacity: 0 }} initial={{ opacity: 0 }} onClick={aoFechar} transition={{ duration: reduceMotion ? 0 : 0.18, ease: "easeOut" }} type="button" />}
+      </AnimatePresence>
       <aside className={`sidebar ${aberta ? "sidebar-open" : "sidebar-collapsed"}`} id="navegacao-principal" onMouseEnter={aoEntrar} onMouseLeave={aoSair}>
         <div className="sidebar-head">
           <a className="brand" href="#" onClick={(event) => { event.preventDefault(); aoNavegar("Visão geral"); }}>
-            <img alt="" aria-hidden="true" className="brand-symbol" src="/gesti-mark-primary.png" />
-            <span className="brand-name"><strong>Gesti</strong><small>{(empresaNome || "GESTÃO DE TI").toUpperCase().slice(0, 22)}</small></span>
+            <img alt="" aria-hidden="true" className="brand-symbol" src="/gesti-mark.svg" />
+            <span className="brand-name"><strong>GesTI</strong><small>{(empresaNome || "GESTÃO DE TI").toUpperCase().slice(0, 22)}</small></span>
           </a>
         </div>
 
@@ -66,6 +70,7 @@ export function SideBar({ aberta, aoFechar, aoEntrar, aoSair, paginaAtiva, aoNav
                   type="button"
                 >
                   <NavIcon name={page} />
+                  {paginaAtiva === page && <motion.span aria-hidden="true" className="nav-active-marker" layoutId="sidebar-active-marker" transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 40, mass: 0.7 }} />}
                   <span className="nav-text">{page}</span>
                   {contagens[page] > 0 && <span className="nav-badge">{contagens[page]}</span>}
                 </button>
@@ -78,9 +83,11 @@ export function SideBar({ aberta, aoFechar, aoEntrar, aoSair, paginaAtiva, aoNav
                 {secondaryPages.reduce((count, page) => count + (contagens[page] || 0), 0) > 0 && <span className="nav-badge">{secondaryPages.reduce((count, page) => count + (contagens[page] || 0), 0)}</span>}
                 <Icon className={`nav-more-chevron ${showMore ? "nav-more-chevron-open" : ""}`} name="chevron" size={14} />
               </button>
-              {showMore && <ul className="sidebar-nav nav-sublist" id="nav-mais">
-                {secondaryPages.map((page) => <li key={page}><button aria-current={paginaAtiva === page ? "page" : undefined} className={`nav-item ${paginaAtiva === page ? "nav-item-active" : ""}`} onClick={() => { setMoreOpen(false); aoNavegar(page); }} title={page} type="button"><NavIcon name={page} /><span className="nav-text">{page}</span>{contagens[page] > 0 && <span className="nav-badge">{contagens[page]}</span>}</button></li>)}
-              </ul>}
+              <AnimatePresence initial={false}>
+                {showMore && <motion.ul animate={{ height: "auto", opacity: 1, y: 0 }} className="sidebar-nav nav-sublist" exit={{ height: 0, opacity: 0, y: -4 }} id="nav-mais" initial={{ height: 0, opacity: 0, y: -4 }} style={{ overflow: "hidden" }} transition={{ duration: reduceMotion ? 0 : 0.2, ease: [0.22, 1, 0.36, 1] }}>
+                  {secondaryPages.map((page) => <li key={page}><button aria-current={paginaAtiva === page ? "page" : undefined} className={`nav-item ${paginaAtiva === page ? "nav-item-active" : ""}`} onClick={() => { setMoreOpen(false); aoNavegar(page); }} title={page} type="button"><NavIcon name={page} />{paginaAtiva === page && <motion.span aria-hidden="true" className="nav-active-marker" layoutId="sidebar-active-marker" transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 40, mass: 0.7 }} />}<span className="nav-text">{page}</span>{contagens[page] > 0 && <span className="nav-badge">{contagens[page]}</span>}</button></li>)}
+                </motion.ul>}
+              </AnimatePresence>
             </li>}
           </ul>
         </nav>

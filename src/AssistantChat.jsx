@@ -17,7 +17,7 @@ export default function AssistantChat({ companyId, enabled, personName }) {
   const closeTimer = useRef(null);
   const dockRef = useRef(null);
   const messagesEnd = useRef(null);
-  const [messages, setMessages] = useState(() => [{ role: "assistant", content: `Olá, ${personName.split(" ")[0]}! Sou o Guest, seu ajudante no GesTI. Posso ajudar com as tarefas e informações da sua empresa que seu perfil permite consultar.` }]);
+  const [messages, setMessages] = useState(() => [{ role: "assistant", content: `Oi, ${personName.split(" ")[0]}! Que bom te ver por aqui. Eu sou o Guest e posso ajudar com o GesTI e com as informações que seu perfil permite consultar.` }]);
   const canSend = enabled && draft.trim().length > 0 && !busy;
   const visibleMessages = useMemo(() => messages.slice(-12), [messages]);
 

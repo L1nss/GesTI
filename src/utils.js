@@ -20,6 +20,12 @@ export const ROLE_PAGES = {
 
 export const ROLES = ["Dono", "TI", "Gerência", "Funcionário"];
 
+export function normalizeDisplayName(name, email) {
+  if (typeof name === "string" && name.trim()) return name.trim();
+  if (typeof email === "string" && email.includes("@")) return email.slice(0, email.indexOf("@")).trim() || "Usuário";
+  return "Usuário";
+}
+
 /* Capacidades por perfil — substitui os arrays espalhados pelo app. */
 export const ROLE_PERMISSIONS = {
   Dono: ["viewCosts", "manageStock", "manageTickets", "claimTickets", "approve", "manageCompany", "managePeople", "manageServices", "clearLogs", "backup", "manageClients", "manageCalendar", "createTeamChats"],

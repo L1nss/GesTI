@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { classifyTicketPriority, maskCep, maskDocument, maskPhone, sealInvoice, validateCellphone, validateCnpj, validateCpf, validateEmail, verifyLedger } from "../src/store.js";
-import { csvCell, formatDateTime, isFirstAccessRoute, money, nextId, PAGES, ROLE_PERMISSIONS, shortDate, slugify, SLA_BY_PRIORITY, today } from "../src/utils.js";
+import { csvCell, formatDateTime, isFirstAccessRoute, money, nextId, normalizeDisplayName, PAGES, ROLE_PERMISSIONS, shortDate, slugify, SLA_BY_PRIORITY, today } from "../src/utils.js";
+
+describe("normalizeDisplayName", () => {
+  it("preserva o nome informado e recupera nomes ausentes pelo e-mail", () => {
+    expect(normalizeDisplayName("  Ana Souza  ", "ana@example.com")).toBe("Ana Souza");
+    expect(normalizeDisplayName(null, "ana.souza@example.com")).toBe("ana.souza");
+    expect(normalizeDisplayName("", "sem-email")).toBe("Usuário");
+  });
+});
 
 describe("rota de primeiro acesso", () => {
   it("reconhece o link dedicado e não confunde as rotas internas", () => {

@@ -34,7 +34,9 @@ class ErrorBoundary extends Component {
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "system-ui, sans-serif", background: "#faf9f7", color: "#26272b", padding: 24 }}>
         <div style={{ maxWidth: 560, display: "grid", gap: 16 }}>
           <h1 style={{ margin: 0, fontSize: 22 }}>O GesTI encontrou um erro ao iniciar</h1>
-          <pre style={{ margin: 0, whiteSpace: "pre-wrap", background: "#f1efec", border: "1px solid #e2dfda", borderRadius: 10, padding: 14, fontSize: 13, overflow: "auto" }}>{String(error?.stack || error)}</pre>
+          <p role="alert" style={{ margin: 0, lineHeight: 1.6 }}>
+            Ocorreu um erro inesperado. Recarregue a página; se o problema continuar, entre em contato com o suporte.
+          </p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button type="button" onClick={() => window.location.reload()} style={{ padding: "10px 16px", borderRadius: 10, border: "1px solid #c9c5be", background: "#fff", cursor: "pointer" }}>Recarregar página</button>
             <button type="button" onClick={clearSavedData} style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: "#4f46e5", color: "#fff", cursor: "pointer" }}>Limpar dados salvos e recarregar</button>
